@@ -1,0 +1,45 @@
+# GoodLight 配置文件模板 (请复制为 config.yaml 后填入你的本地配置)
+
+home_assistant:
+  # 局域网访问 Home Assistant API (例如: http://homeassistant.local:8123 或 http://192.168.1.100:8123)
+  url: "http://homeassistant.local:8123"
+  # Home Assistant 长期访问令牌 (在 HA 个人资料 -> 长期访问令牌 中生成)
+  # 也可以通过环境变量 GOODLIGHT_HA_TOKEN 传入
+  token: "YOUR_HA_LONG_LIVED_ACCESS_TOKEN"
+
+location:
+  # 地理坐标 (用于天文学计算太阳真实高度角、真太阳时与二十四节气，默认北京经纬度)
+  latitude: 39.9042
+  longitude: 116.4074
+  elevation: 0
+  timezone_offset: 8.0
+
+# 受控灯具组配置
+lighting_group:
+  name: "Living Room Lights"
+  # 按优先级排布的灯具实体 (主灯 -> 辅助灯/氛围灯/台灯)
+  lights:
+    - entity_id: "light.living_room_main"
+      name: "主吸顶灯"
+      priority: 1
+      min_kelvin: 2700
+      max_kelvin: 6500
+    - entity_id: "light.living_room_ambient"
+      name: "氛围灯带"
+      priority: 2
+      min_kelvin: 2700
+      max_kelvin: 6500
+
+# 外部环境传感器实体 (可选，无则留空)
+sensors:
+  temperature: ""  # 如: sensor.indoor_temperature
+  weather: ""      # 如: weather.home
+
+# 学习模式配置
+learning:
+  # 开启后，仅在开灯或光线突变时调整，开灯后不抢控制权并静默学习手动调光
+  take_over_learn: true
+  # 局部加权学习率 (0.1 ~ 0.5)
+  learning_rate: 0.25
+  # 手动调光防抖延时 (秒)
+  debounce_seconds: 3.0

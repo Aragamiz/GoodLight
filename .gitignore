@@ -1,0 +1,23 @@
+# 本地隐私配置文件 (禁止提交到 Git)
+config.yaml
+config.local.yaml
+*.local.yaml
+
+# 本地运行时与训练偏好数据
+light_profile.json
+*.db
+*.log
+
+# 环境变量与密钥
+.env
+.env.*
+*.key
+*.token
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
