@@ -116,6 +116,49 @@ class GoodLightService:
         self.time_offset_seconds = 0
         add_log("时间偏移量已重置为系统实时时间")
 
+    def save_and_reload_config(self, setup_data: dict) -> bool:
+        """从预装向导保存新配置并热生效"""
+        try:
+            ha_url = setup_data.get("ha_url") or self.cfg["home_assistant"]["url"]
+            ha_token = setup_data.get("ha_token") or self.cfg["home_assistant"]["token"]
+            lat = float(setup_data.get("latitude", self.cfg["location"].get("latitude", 39.9042)))
+            lng = float(setup_data.get("longitude", self.cfg["location"].get("longitude", 116.4074)))
+            tz_offset = float(setup_data.get("timezone_offset", self.tz_offset))
+            groups = setup_data.get("groups")
+
+            if "home_assistant" not in self.cfg:
+                self.cfg["home_assistant"] = {}
+            if "location" not in self.cfg:
+                self.cfg["location"] = {}
+
+            self.cfg["home_assistant"]["url"] = ha_url
+            self.cfg["home_assistant"]["token"] = ha_token
+            self.cfg["location"]["latitude"] = lat
+            self.cfg["location"]["longitude"] = lng
+            self.cfg["location"]["timezone_offset"] = tz_offset
+            if groups:
+                self.cfg["groups"] = groups
+
+            # 持久化写入配置文件
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
+
+            # 更新客户端鉴权
+            self.client.update_credentials(ha_url, ha_token)
+            # 更新太阳计算器经纬度与时区
+            self.solar.latitude = lat
+            self.solar.longitude = lng
+            self.update_timezone(tz_offset)
+            # 重新加载分组
+            self._init_groups()
+            asyncio.create_task(self._init_light_states())
+            add_log(f"已成功应用新配置！受控灯组数: {len(self.groups)}")
+            return True
+        except Exception as e:
+            logger.error(f"保存或重载配置失败: {e}")
+            add_log(f"保存配置失败: {e}")
+            return False
+
     def get_current_time(self) -> datetime:
         return datetime.now(self.tz) + timedelta(seconds=self.time_offset_seconds)
 

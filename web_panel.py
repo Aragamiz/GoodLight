@@ -166,14 +166,328 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-size: 13px;
       outline: none;
     }
+
+    /* 预装与配置向导 (Onboarding Wizard) 样式 */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 10, 24, 0.88);
+      backdrop-filter: blur(10px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-content {
+      background: #111b2f;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 780px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75);
+      padding: 28px;
+      position: relative;
+    }
+    .wizard-steps {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--subtext);
+      font-weight: 500;
+    }
+    .step-item.active {
+      color: var(--primary);
+      font-weight: 700;
+    }
+    .step-item.done {
+      color: var(--success);
+    }
+    .step-num {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1e293b;
+      font-size: 12px;
+    }
+    .step-item.active .step-num {
+      background: var(--primary);
+      color: #0b1329;
+      font-weight: bold;
+    }
+    .step-item.done .step-num {
+      background: var(--success);
+      color: #0b1329;
+    }
+    .wiz-input {
+      width: 100%;
+      background: #090e1a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      margin-top: 6px;
+      margin-bottom: 14px;
+      box-sizing: border-box;
+      transition: border 0.2s;
+    }
+    .wiz-input:focus {
+      border-color: var(--primary);
+    }
+    .wiz-btn-primary {
+      background: var(--primary);
+      color: #0b1329;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .wiz-btn-primary:hover {
+      opacity: 0.9;
+    }
+    .wiz-btn-secondary {
+      background: #1e293b;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .wiz-btn-secondary:hover {
+      background: #334155;
+    }
+    .light-item-card {
+      background: #090e1a;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .tag-badge {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+    .tag-blue { background: rgba(56, 189, 248, 0.15); color: var(--primary); }
+    .tag-green { background: rgba(74, 222, 128, 0.15); color: var(--success); }
+    .tag-amber { background: rgba(251, 191, 36, 0.15); color: var(--accent); }
+    .city-pill {
+      background: #1e293b;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-block;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    .city-pill:hover {
+      background: var(--primary);
+      color: #0b1329;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="title">🌟 GoodLight 控制面板</div>
-    <div style="display: flex; gap: 10px; align-items: center;">
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <button class="btn-action" style="border-color: var(--primary); color: var(--primary); font-weight: 600;" onclick="openWizard()">🚀 启动与配置向导</button>
       <div id="sim-time-badge" style="font-size: 13px; color: var(--accent);">时间: --:--:--</div>
       <div class="badge" id="status-badge">● 正在运行</div>
+    </div>
+  </div>
+
+  <!-- 预装启动与配置向导模态弹窗 -->
+  <div id="wizard-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <!-- 步骤指示器 -->
+      <div class="wizard-steps">
+        <div class="step-item active" id="step-nav-1"><span class="step-num">1</span> 欢迎</div>
+        <div class="step-item" id="step-nav-2"><span class="step-num">2</span> 填写令牌</div>
+        <div class="step-item" id="step-nav-3"><span class="step-num">3</span> 加入灯组</div>
+        <div class="step-item" id="step-nav-4"><span class="step-num">4</span> 补足信息</div>
+        <div class="step-item" id="step-nav-5"><span class="step-num">5</span> 完成启动</div>
+      </div>
+
+      <!-- Step 1: 欢迎界面 GoodLight -->
+      <div id="wizard-step-1">
+        <div style="text-align: center; padding: 20px 0 24px;">
+          <h1 style="font-size: 38px; font-weight: 800; background: linear-gradient(135deg, #38bdf8 0%, #fbbf24 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px;">GoodLight</h1>
+          <div style="font-size: 15px; color: var(--subtext); margin-bottom: 24px;">智能天体节气自适应全屋照明系统</div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; text-align: left; margin-bottom: 28px;">
+            <div style="background: #090e1a; padding: 16px; border-radius: 10px; border: 1px solid var(--border);">
+              <div style="font-size: 16px; font-weight: 600; color: var(--primary); margin-bottom: 6px;">☀️ 自然日光感知</div>
+              <div style="font-size: 12px; color: var(--subtext); line-height: 1.5;">精准解算太阳真实高度角与真太阳时，实现生理昼夜节律自适应光照。</div>
+            </div>
+            <div style="background: #090e1a; padding: 16px; border-radius: 10px; border: 1px solid var(--border);">
+              <div style="font-size: 16px; font-weight: 600; color: var(--accent); margin-bottom: 6px;">🌾 二十四节气温感</div>
+              <div style="font-size: 12px; color: var(--subtext); line-height: 1.5;">夏至清凉、冬至温煦，四季变换动态补偿室内温差氛围感。</div>
+            </div>
+            <div style="background: #090e1a; padding: 16px; border-radius: 10px; border: 1px solid var(--border);">
+              <div style="font-size: 16px; font-weight: 600; color: var(--success); margin-bottom: 6px;">⚡ 边缘极简低开销</div>
+              <div style="font-size: 12px; color: var(--subtext); line-height: 1.5;">为路由器/Docker定制，纯Python高效引擎，内存仅~40MB。</div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: center; gap: 12px;">
+            <button class="wiz-btn-primary" style="padding: 11px 28px; font-size: 15px;" onclick="goToStep(2)">开始配置向导 →</button>
+            <button class="wiz-btn-secondary" onclick="closeWizard()">进入控制台</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: 填写令牌 -->
+      <div id="wizard-step-2" style="display: none;">
+        <h2 style="font-size: 18px; color: var(--primary); margin-bottom: 6px;">🔑 填写 Home Assistant 访问令牌</h2>
+        <div style="font-size: 13px; color: var(--subtext); margin-bottom: 20px;">
+          GoodLight 通过 WebSocket 与 REST API 和 Home Assistant 实时同步，请填入连接信息。
+        </div>
+
+        <label style="font-size: 13px; font-weight: 600; color: var(--text);">Home Assistant 地址 (URL):</label>
+        <input type="text" id="wiz-ha-url" class="wiz-input" value="http://192.168.6.1:8123" placeholder="例如: http://192.168.6.1:8123">
+
+        <label style="font-size: 13px; font-weight: 600; color: var(--text);">长期访问令牌 (Long-Lived Access Token):</label>
+        <div style="position: relative;">
+          <input type="password" id="wiz-ha-token" class="wiz-input" style="padding-right: 40px;" placeholder="粘贴你的 HA 长期访问令牌 (eyJhbGci...)">
+          <span onclick="toggleTokenVisibility()" style="position: absolute; right: 12px; top: 14px; cursor: pointer; font-size: 16px;" title="显示/隐藏令牌">👁️</span>
+        </div>
+        <div style="font-size: 12px; color: var(--subtext); margin-top: -6px; margin-bottom: 16px;">
+          💡 获取方式：在 Home Assistant 点击左下角头像 ➔ 滚动到底部【长期访问令牌】➔ 点击【创建令牌】并复制。
+        </div>
+
+        <div style="margin-bottom: 16px;">
+          <button class="wiz-btn-secondary" id="btn-wiz-test" onclick="testHAConnection()">🔍 测试连接并自动扫描全屋灯具</button>
+        </div>
+
+        <div id="wiz-conn-status" style="margin-bottom: 20px; font-size: 13px; padding: 10px 14px; border-radius: 8px; display: none;"></div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px;">
+          <button class="wiz-btn-secondary" onclick="goToStep(1)">← 上一步</button>
+          <button class="wiz-btn-primary" id="btn-step2-next" onclick="goToStep(3)">下一步：加入灯组 →</button>
+        </div>
+      </div>
+
+      <!-- Step 3: 加入灯组 (自主识别灯具) -->
+      <div id="wizard-step-3" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+          <h2 style="font-size: 18px; color: var(--primary);">💡 自主识别全屋灯具与分组</h2>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-action" onclick="autoRecommendGroups()">⚡ 智能自动分组</button>
+            <button class="btn-action" onclick="rescanLights()">🔄 重新扫描</button>
+          </div>
+        </div>
+        <div style="font-size: 13px; color: var(--subtext); margin-bottom: 16px;">
+          系统已自主识别出全屋灯具，请选择各灯具归属的自适应控制分组（不需要托管的灯可设为“不纳入托管”）：
+        </div>
+
+        <div id="wiz-lights-list" style="max-height: 380px; overflow-y: auto; padding-right: 4px; margin-bottom: 20px;">
+          <div style="color: var(--subtext); text-align: center; padding: 30px;">正在扫描或未连接，请先返回第二步测试连接...</div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px;">
+          <button class="wiz-btn-secondary" onclick="goToStep(2)">← 上一步</button>
+          <button class="wiz-btn-primary" onclick="goToStep(4)">下一步：补足信息 →</button>
+        </div>
+      </div>
+
+      <!-- Step 4: 补足各种信息 -->
+      <div id="wizard-step-4" style="display: none;">
+        <h2 style="font-size: 18px; color: var(--primary); margin-bottom: 6px;">🌍 补足地理位置与时区信息</h2>
+        <div style="font-size: 13px; color: var(--subtext); margin-bottom: 16px;">
+          经纬度用于精确计算太阳真实高度角与真太阳时，匹配自然的昼夜照明节律。
+        </div>
+
+        <label style="font-size: 13px; font-weight: 600; color: var(--text);">快捷选择城市一键填充坐标：</label>
+        <div style="margin: 8px 0 16px;">
+          <span class="city-pill" onclick="setCity(39.9042, 116.4074)">北京</span>
+          <span class="city-pill" onclick="setCity(31.2304, 121.4737)">上海</span>
+          <span class="city-pill" onclick="setCity(23.1291, 113.2644)">广州</span>
+          <span class="city-pill" onclick="setCity(22.5431, 114.0579)">深圳</span>
+          <span class="city-pill" onclick="setCity(30.2741, 120.1551)">杭州</span>
+          <span class="city-pill" onclick="setCity(30.5728, 104.0668)">成都</span>
+          <span class="city-pill" onclick="setCity(30.5928, 114.3055)">武汉</span>
+          <span class="city-pill" onclick="setCity(34.3416, 108.9398)">西安</span>
+          <span class="city-pill" onclick="setCity(29.5630, 106.5516)">重庆</span>
+          <span class="city-pill" onclick="setCity(32.0603, 118.7969)">南京</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <div>
+            <label style="font-size: 13px; font-weight: 600; color: var(--text);">纬度 (Latitude):</label>
+            <input type="number" id="wiz-lat" class="wiz-input" step="0.0001" value="39.9042">
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600; color: var(--text);">经度 (Longitude):</label>
+            <input type="number" id="wiz-lng" class="wiz-input" step="0.0001" value="116.4074">
+          </div>
+        </div>
+
+        <label style="font-size: 13px; font-weight: 600; color: var(--text);">本地时区 (Timezone):</label>
+        <select id="wiz-tz" class="wiz-input" style="height: 42px;">
+          <option value="8.0" selected>UTC+8 (北京 / 上海 / 香港 / 台北)</option>
+          <option value="9.0">UTC+9 (东京 / 首尔)</option>
+          <option value="0.0">UTC+0 (伦敦 / GMT)</option>
+          <option value="1.0">UTC+1 (巴黎 / 柏林)</option>
+          <option value="-5.0">UTC-5 (纽约 / 美东)</option>
+          <option value="-8.0">UTC-8 (旧金山 / 洛杉矶)</option>
+        </select>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px;">
+          <button class="wiz-btn-secondary" onclick="goToStep(3)">← 上一步</button>
+          <button class="wiz-btn-primary" onclick="goToStep(5)">下一步：完成确认 →</button>
+        </div>
+      </div>
+
+      <!-- Step 5: 完成流程 -->
+      <div id="wizard-step-5" style="display: none;">
+        <h2 style="font-size: 18px; color: var(--success); margin-bottom: 6px;">🎉 配置完成，准备启动！</h2>
+        <div style="font-size: 13px; color: var(--subtext); margin-bottom: 20px;">
+          请核对以下配置清单，确认无误后点击下方按钮立即启动 GoodLight 自适应光照系统：
+        </div>
+
+        <div style="background: #090e1a; border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 24px; font-size: 13px; line-height: 1.8;">
+          <div><strong style="color: var(--primary);">Home Assistant 地址:</strong> <span id="summary-url">--</span></div>
+          <div><strong style="color: var(--primary);">长期访问令牌:</strong> <span id="summary-token">已配置</span></div>
+          <div><strong style="color: var(--primary);">自适应托管灯组:</strong> <span id="summary-groups">--</span></div>
+          <div><strong style="color: var(--primary);">地理坐标与时区:</strong> <span id="summary-loc">--</span></div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px;">
+          <button class="wiz-btn-secondary" onclick="goToStep(4)">← 返回修改</button>
+          <button class="wiz-btn-primary" id="btn-wiz-finish" style="background: var(--success); font-size: 15px; padding: 11px 24px;" onclick="finishWizard()">🎉 保存并启动 GoodLight 自适应巡航</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -281,6 +595,312 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 
   <script>
+    let currentStep = 1;
+    let discoveredLights = [];
+    let lightGroupAssignments = {};
+    let existingConfig = {};
+
+    function openWizard() {
+      document.getElementById('wizard-modal').style.display = 'flex';
+      loadCurrentConfigIntoWizard();
+      goToStep(1);
+    }
+
+    function closeWizard() {
+      document.getElementById('wizard-modal').style.display = 'none';
+    }
+
+    function goToStep(step) {
+      currentStep = step;
+      for (let i = 1; i <= 5; i++) {
+        const stepDiv = document.getElementById(`wizard-step-${i}`);
+        if (stepDiv) stepDiv.style.display = (i === step) ? 'block' : 'none';
+        const nav = document.getElementById(`step-nav-${i}`);
+        if (nav) {
+          nav.classList.remove('active', 'done');
+          if (i === step) nav.classList.add('active');
+          else if (i < step) nav.classList.add('done');
+        }
+      }
+      if (step === 3 && discoveredLights.length === 0) {
+        rescanLights();
+      }
+      if (step === 5) {
+        renderSummary();
+      }
+    }
+
+    function toggleTokenVisibility() {
+      const inp = document.getElementById('wiz-ha-token');
+      inp.type = (inp.type === 'password') ? 'text' : 'password';
+    }
+
+    async function loadCurrentConfigIntoWizard() {
+      try {
+        const resp = await fetch('/api/setup/current_config');
+        const data = await resp.json();
+        existingConfig = data;
+        if (data.ha_url) document.getElementById('wiz-ha-url').value = data.ha_url;
+        if (data.latitude) document.getElementById('wiz-lat').value = data.latitude;
+        if (data.longitude) document.getElementById('wiz-lng').value = data.longitude;
+        if (data.timezone_offset) document.getElementById('wiz-tz').value = data.timezone_offset.toFixed(1);
+
+        if (data.groups) {
+          data.groups.forEach(g => {
+            (g.lights || []).forEach(l => {
+              lightGroupAssignments[l.entity_id] = {
+                group_id: g.id,
+                group_name: g.name,
+                priority: l.priority || 1,
+                min_kelvin: l.min_kelvin || 2700,
+                max_kelvin: l.max_kelvin || 6500,
+                name: l.name
+              };
+            });
+          });
+        }
+      } catch (e) {
+        console.error("加载向导初始配置失败:", e);
+      }
+    }
+
+    async function testHAConnection() {
+      const url = document.getElementById('wiz-ha-url').value.trim();
+      const token = document.getElementById('wiz-ha-token').value.trim();
+      const statusBox = document.getElementById('wiz-conn-status');
+      const testBtn = document.getElementById('btn-wiz-test');
+      const nextBtn = document.getElementById('btn-step2-next');
+
+      if (!token && !existingConfig.has_token) {
+        statusBox.style.display = 'block';
+        statusBox.style.background = 'rgba(251, 113, 133, 0.15)';
+        statusBox.style.color = '#fb7185';
+        statusBox.innerText = '⚠️ 请先输入或粘贴长期访问令牌 (Long-Lived Access Token)';
+        return;
+      }
+
+      testBtn.disabled = true;
+      testBtn.innerText = '⏳ 正在连接测试并扫描实体...';
+      statusBox.style.display = 'block';
+      statusBox.style.background = 'rgba(56, 189, 248, 0.15)';
+      statusBox.style.color = '#38bdf8';
+      statusBox.innerText = '正在验证 Home Assistant WebSocket/REST 连通性...';
+
+      try {
+        const resp = await fetch('/api/setup/test_connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: url, token: token })
+        });
+        const res = await resp.json();
+
+        if (res.ok) {
+          statusBox.style.background = 'rgba(74, 222, 128, 0.15)';
+          statusBox.style.color = '#4ade80';
+          statusBox.innerText = `✅ 连接成功！已自主识别到 ${res.lights_count} 盏全屋灯具设备。`;
+          discoveredLights = res.lights || [];
+          renderDiscoveredLights();
+          nextBtn.disabled = false;
+        } else {
+          statusBox.style.background = 'rgba(251, 113, 133, 0.15)';
+          statusBox.style.color = '#fb7185';
+          statusBox.innerText = `❌ 连接失败: ${res.message}`;
+          nextBtn.disabled = true;
+        }
+      } catch (e) {
+        statusBox.style.background = 'rgba(251, 113, 133, 0.15)';
+        statusBox.style.color = '#fb7185';
+        statusBox.innerText = `❌ 请求发生异常: ${e.message}`;
+      } finally {
+        testBtn.disabled = false;
+        testBtn.innerText = '🔍 测试连接并自动扫描全屋灯具';
+      }
+    }
+
+    async function rescanLights() {
+      const listContainer = document.getElementById('wiz-lights-list');
+      listContainer.innerHTML = '<div style="color:var(--primary);text-align:center;padding:30px;">⏳ 正在向 Home Assistant 扫描全量灯具列表...</div>';
+      try {
+        const resp = await fetch('/api/setup/discover_lights');
+        const res = await resp.json();
+        if (res.ok) {
+          discoveredLights = res.lights || [];
+          renderDiscoveredLights();
+        } else {
+          listContainer.innerHTML = `<div style="color:var(--rose);text-align:center;padding:30px;">扫描失败: ${res.message}</div>`;
+        }
+      } catch (e) {
+        listContainer.innerHTML = `<div style="color:var(--rose);text-align:center;padding:30px;">网络请求失败: ${e.message}</div>`;
+      }
+    }
+
+    function renderDiscoveredLights() {
+      const container = document.getElementById('wiz-lights-list');
+      if (discoveredLights.length === 0) {
+        container.innerHTML = '<div style="color:var(--subtext);text-align:center;padding:30px;">未发现任何以 light.* 开头的实体，请确认HA已正确接入灯具。</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      discoveredLights.forEach((light) => {
+        const ent = light.entity_id;
+        const assigned = lightGroupAssignments[ent] || {};
+        const currentGroup = assigned.group_id || 'none';
+
+        const card = document.createElement('div');
+        card.className = 'light-item-card';
+
+        let badges = '';
+        if (light.has_brightness) badges += '<span class="tag-badge tag-green" style="margin-right:4px;">☀️ 调光</span>';
+        if (light.has_color_temp) badges += '<span class="tag-badge tag-blue" style="margin-right:4px;">🌈 色温</span>';
+        if (!light.has_brightness && !light.has_color_temp) badges += '<span class="tag-badge tag-amber" style="margin-right:4px;">💡 开关</span>';
+
+        const stateColor = (light.state === 'on') ? 'var(--success)' : 'var(--subtext)';
+
+        card.innerHTML = `
+          <div style="flex: 1; min-width: 220px;">
+            <div style="font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+              <span>${light.name}</span>
+              <span style="font-size: 11px; color: ${stateColor};">● ${light.state.toUpperCase()}</span>
+            </div>
+            <div style="font-size: 12px; color: var(--subtext); font-family: monospace; margin: 3px 0 6px;">${ent}</div>
+            <div>${badges}</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 12px; color: var(--subtext);">分配到分组:</span>
+            <select class="light-group-select" data-ent="${ent}" data-name="${light.name}" onchange="onAssignLightGroup('${ent}', this.value, '${light.name}', ${light.min_kelvin}, ${light.max_kelvin})">
+              <option value="living_room_main" ${currentGroup==='living_room_main'?'selected':''}>🛋️ 客厅主灯组</option>
+              <option value="living_room_ambient" ${currentGroup==='living_room_ambient'?'selected':''}>✨ 客厅氛围灯组</option>
+              <option value="desk_lamp" ${currentGroup==='desk_lamp'?'selected':''}>🖥️ 工作台/台灯组</option>
+              <option value="none" ${currentGroup==='none'?'selected':''}>🚫 不纳入自适应托管</option>
+            </select>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function onAssignLightGroup(ent, groupId, name, minK, maxK) {
+      if (groupId === 'none') {
+        delete lightGroupAssignments[ent];
+      } else {
+        lightGroupAssignments[ent] = {
+          group_id: groupId,
+          name: name,
+          priority: groupId === 'living_room_ambient' ? 2 : 1,
+          min_kelvin: minK || 2700,
+          max_kelvin: maxK || 6500
+        };
+      }
+    }
+
+    function autoRecommendGroups() {
+      discoveredLights.forEach(light => {
+        const n = light.name.toLowerCase();
+        const ent = light.entity_id.toLowerCase();
+        let targetGroup = 'none';
+
+        if (n.includes('主灯') || n.includes('吸顶') || ent.includes('light_2') || (!n.includes('氛围') && !n.includes('台灯') && !n.includes('插座') && !n.includes('指示') && light.has_brightness)) {
+          targetGroup = 'living_room_main';
+        } else if (n.includes('氛围') || n.includes('灯带') || ent.includes('ambient')) {
+          targetGroup = 'living_room_ambient';
+        } else if (n.includes('台灯') || n.includes('工作') || n.includes('desk') || ent.includes('lamp')) {
+          targetGroup = 'desk_lamp';
+        }
+
+        onAssignLightGroup(light.entity_id, targetGroup, light.name, light.min_kelvin, light.max_kelvin);
+      });
+      renderDiscoveredLights();
+    }
+
+    function setCity(lat, lng) {
+      document.getElementById('wiz-lat').value = lat;
+      document.getElementById('wiz-lng').value = lng;
+    }
+
+    function renderSummary() {
+      const url = document.getElementById('wiz-ha-url').value;
+      const token = document.getElementById('wiz-ha-token').value;
+      const lat = document.getElementById('wiz-lat').value;
+      const lng = document.getElementById('wiz-lng').value;
+      const tz = document.getElementById('wiz-tz').value;
+
+      document.getElementById('summary-url').innerText = url;
+      document.getElementById('summary-token').innerText = token ? (token.substring(0, 10) + '...' + token.slice(-8)) : (existingConfig.has_token ? '保持现有已配置令牌' : '未提供');
+      
+      const assignedEnts = Object.keys(lightGroupAssignments);
+      const groupsFound = new Set(Object.values(lightGroupAssignments).map(v => v.group_id));
+      document.getElementById('summary-groups').innerText = `${assignedEnts.length} 盏灯具分配在 ${groupsFound.size} 个独立受控组中`;
+      document.getElementById('summary-loc').innerText = `纬度: ${lat}°, 经度: ${lng}°, 时区: UTC+${tz}`;
+    }
+
+    async function finishWizard() {
+      const finishBtn = document.getElementById('btn-wiz-finish');
+      finishBtn.disabled = true;
+      finishBtn.innerText = '⏳ 正在保存配置并重启引擎...';
+
+      const ha_url = document.getElementById('wiz-ha-url').value.trim();
+      const ha_token = document.getElementById('wiz-ha-token').value.trim();
+      const lat = parseFloat(document.getElementById('wiz-lat').value) || 39.9042;
+      const lng = parseFloat(document.getElementById('wiz-lng').value) || 116.4074;
+      const tz = parseFloat(document.getElementById('wiz-tz').value) || 8.0;
+
+      // 构建 groups
+      const groupMap = {
+        'living_room_main': { id: 'living_room_main', name: '客厅主吸顶灯', profile_path: 'profile_living_room_main.json', lights: [] },
+        'living_room_ambient': { id: 'living_room_ambient', name: '客厅氛围灯带', profile_path: 'profile_living_room_ambient.json', lights: [] },
+        'desk_lamp': { id: 'desk_lamp', name: '书房/工作台灯', profile_path: 'profile_desk_lamp.json', lights: [] }
+      };
+
+      for (const [ent, info] of Object.entries(lightGroupAssignments)) {
+        const gid = info.group_id;
+        if (!groupMap[gid]) {
+          groupMap[gid] = { id: gid, name: info.group_name || gid, profile_path: `profile_${gid}.json`, lights: [] };
+        }
+        groupMap[gid].lights.push({
+          entity_id: ent,
+          name: info.name,
+          priority: info.priority || 1,
+          min_kelvin: info.min_kelvin || 2700,
+          max_kelvin: info.max_kelvin || 6500
+        });
+      }
+
+      const activeGroups = Object.values(groupMap).filter(g => g.lights.length > 0);
+
+      const payload = {
+        ha_url: ha_url,
+        ha_token: ha_token,
+        latitude: lat,
+        longitude: lng,
+        timezone_offset: tz,
+        groups: activeGroups.length > 0 ? activeGroups : existingConfig.groups
+      };
+
+      try {
+        const resp = await fetch('/api/setup/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+        if (res.ok) {
+          alert('🎉 GoodLight 启动向导配置已保存成功！自适应光照引擎已就绪。');
+          closeWizard();
+          await updateDashboard();
+          await updatePerfData();
+          await updateLightData();
+        } else {
+          alert('保存配置失败: ' + (res.message || '未知错误'));
+        }
+      } catch (e) {
+        alert('请求保存异常: ' + e.message);
+      } finally {
+        finishBtn.disabled = false;
+        finishBtn.innerText = '🎉 保存并启动 GoodLight 自适应巡航';
+      }
+    }
+
     let currentPerfHours = 1;
     let currentLightHours = 24;
     let perfChart = null;
@@ -599,6 +1219,10 @@ class WebPanel:
         self.app.router.add_post("/api/control/timezone", self.handle_control_timezone)
         self.app.router.add_post("/api/control/time_adjust", self.handle_control_time_adjust)
         self.app.router.add_post("/api/control/time_reset", self.handle_control_time_reset)
+        self.app.router.add_post("/api/setup/test_connection", self.handle_api_setup_test)
+        self.app.router.add_get("/api/setup/discover_lights", self.handle_api_setup_discover)
+        self.app.router.add_get("/api/setup/current_config", self.handle_api_setup_get_config)
+        self.app.router.add_post("/api/setup/save", self.handle_api_setup_save)
         self._last_cpu_time = 0.0
         self._last_sample_time = time.time()
 
@@ -720,6 +1344,47 @@ class WebPanel:
         hours = float(request.query.get("hours", 24))
         data = self.service.db.query_light_history(hours=hours, tz=self.service.tz)
         return web.json_response(data)
+
+    async def handle_api_setup_test(self, request):
+        try:
+            req_data = await request.json()
+            url = req_data.get("url", "").strip()
+            token = req_data.get("token", "").strip()
+            res = await self.service.client.test_connection(url, token)
+            return web.json_response(res)
+        except Exception as e:
+            return web.json_response({"ok": False, "message": str(e)})
+
+    async def handle_api_setup_discover(self, request):
+        try:
+            lights = await self.service.client.discover_lights()
+            return web.json_response({"ok": True, "lights": lights, "lights_count": len(lights)})
+        except Exception as e:
+            return web.json_response({"ok": False, "message": str(e), "lights": []})
+
+    async def handle_api_setup_get_config(self, request):
+        cfg = self.service.cfg
+        ha_cfg = cfg.get("home_assistant", {})
+        loc_cfg = cfg.get("location", {})
+        tok = ha_cfg.get("token", "")
+        masked_tok = (tok[:10] + "..." + tok[-8:]) if len(tok) > 20 else tok
+        return web.json_response({
+            "ha_url": ha_cfg.get("url", "http://192.168.6.1:8123"),
+            "token_masked": masked_tok,
+            "has_token": bool(tok and tok != "YOUR_HA_LONG_LIVED_ACCESS_TOKEN"),
+            "latitude": loc_cfg.get("latitude", 39.9042),
+            "longitude": loc_cfg.get("longitude", 116.4074),
+            "timezone_offset": self.service.tz_offset,
+            "groups": cfg.get("groups", [])
+        })
+
+    async def handle_api_setup_save(self, request):
+        try:
+            data = await request.json()
+            success = self.service.save_and_reload_config(data)
+            return web.json_response({"ok": success})
+        except Exception as e:
+            return web.json_response({"ok": False, "message": str(e)})
 
     async def start(self):
         runner = web.AppRunner(self.app)

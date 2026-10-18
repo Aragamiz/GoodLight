@@ -107,3 +107,94 @@ class HAClient:
         except Exception as e:
             logger.debug(f"获取状态异常 {entity_id}: {e}")
         return {}
+
+    def update_credentials(self, base_url: str, token: str):
+        """更新连接地址与令牌"""
+        self.base_url = base_url.rstrip("/")
+        self.token = token
+        self.ws_url = self.base_url.replace("http://", "ws://").replace("https://", "wss://") + "/api/websocket"
+
+    async def get_all_entities(self, test_url: str = None, test_token: str = None) -> List[Dict[str, Any]]:
+        """获取所有实体列表"""
+        await self.ensure_session()
+        base = (test_url or self.base_url).rstrip("/")
+        tok = test_token or self.token
+        url = f"{base}/api/states"
+        headers = {"Authorization": f"Bearer {tok}"}
+        try:
+            async with self.session.get(url, headers=headers, timeout=6) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                else:
+                    text = await resp.text()
+                    logger.warning(f"获取实体列表失败 [{resp.status}]: {text}")
+        except Exception as e:
+            logger.error(f"获取实体列表网络异常: {e}")
+        return []
+
+    async def discover_lights(self, test_url: str = None, test_token: str = None) -> List[Dict[str, Any]]:
+        """自主识别全屋所有灯具实体，并解析友善名称与支持特性"""
+        states = await self.get_all_entities(test_url=test_url, test_token=test_token)
+        lights = []
+        for st in states:
+            ent = st.get("entity_id", "")
+            if ent.startswith("light."):
+                attrs = st.get("attributes", {})
+                friendly_name = attrs.get("friendly_name") or ent
+                supported_color_modes = attrs.get("supported_color_modes", [])
+                
+                # 判断是否支持无级调光
+                has_brightness = (
+                    ("brightness" in attrs) or 
+                    any(m in supported_color_modes for m in ["brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww"])
+                )
+                
+                # 判断是否支持色温切换
+                has_color_temp = (
+                    ("color_temp" in attrs) or 
+                    ("color_temp_kelvin" in attrs) or 
+                    ("color_temp" in supported_color_modes)
+                )
+                
+                min_k = attrs.get("min_color_temp_kelvin")
+                max_k = attrs.get("max_color_temp_kelvin")
+                if not min_k and attrs.get("max_mireds"):
+                    min_k = int(1000000 / attrs["max_mireds"])
+                if not max_k and attrs.get("min_mireds"):
+                    max_k = int(1000000 / attrs["min_mireds"])
+
+                lights.append({
+                    "entity_id": ent,
+                    "name": friendly_name,
+                    "state": st.get("state", "off"),
+                    "has_brightness": bool(has_brightness),
+                    "has_color_temp": bool(has_color_temp),
+                    "min_kelvin": min_k or 2700,
+                    "max_kelvin": max_k or 6500
+                })
+        return lights
+
+    async def test_connection(self, url: str, token: str) -> Dict[str, Any]:
+        """向导中用于验证 HA 地址与令牌有效性，并直接扫描灯具"""
+        await self.ensure_session()
+        base = url.rstrip("/")
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            async with self.session.get(f"{base}/api/", headers=headers, timeout=6) as resp:
+                if resp.status == 200:
+                    api_info = await resp.json()
+                    # 进一步扫描灯具
+                    lights = await self.discover_lights(test_url=base, test_token=token)
+                    return {
+                        "ok": True,
+                        "message": api_info.get("message", "API running"),
+                        "lights": lights,
+                        "lights_count": len(lights)
+                    }
+                elif resp.status == 401:
+                    return {"ok": False, "message": "401 Unauthorized: 令牌无效或已过期，请检查 Long-Lived Access Token"}
+                else:
+                    return {"ok": False, "message": f"连接返回状态码 {resp.status}"}
+        except Exception as e:
+            return {"ok": False, "message": f"无法连接到 Home Assistant: {str(e)}"}
+
