@@ -74,6 +74,7 @@ class GoodLightService:
         self.client = HAClient(base_url=ha_url, token=ha_token)
         self.db = HistoryDB(db_path="history.db")
         self.ignore_updates = set()
+        self.light_states: dict[str, dict] = {}
 
         # 初始化分组
         self.groups: dict[str, LightGroup] = {}
@@ -81,6 +82,30 @@ class GoodLightService:
         self._init_groups()
 
         self.web_panel = WebPanel(self, host="0.0.0.0", port=8787)
+
+    def update_cached_state(self, entity_id: str, st_data: dict):
+        state_str = st_data.get("state", "off")
+        attrs = st_data.get("attributes", {})
+        b = attrs.get("brightness")
+        c = attrs.get("color_temp_kelvin") or attrs.get("color_temp")
+        if c and c < 1000:
+            try:
+                c = int(1000000 / c)
+            except Exception:
+                pass
+        pct_b = round((b / 255.0) * 100, 1) if (state_str == "on" and b is not None) else 0
+        friendly_name = attrs.get("friendly_name")
+        
+        cur = self.light_states.get(entity_id, {})
+        cur["state"] = state_str
+        cur["brightness"] = pct_b
+        if c:
+            cur["color_temp"] = c
+        elif "color_temp" not in cur:
+            cur["color_temp"] = 4000
+        if friendly_name:
+            cur["friendly_name"] = friendly_name
+        self.light_states[entity_id] = cur
 
     def _init_groups(self):
         self.groups.clear()
@@ -254,6 +279,129 @@ class GoodLightService:
             "entity_stats": entity_stats
         }
 
+    async def toggle_light(self, entity_id: str, target_state: str) -> dict:
+        """用户在面板手动勾选切换灯具状态"""
+        grp = self.entity_to_group.get(entity_id)
+        if target_state == "on":
+            now = self.get_current_time()
+            hour_float = now.hour + now.minute / 60.0 + now.second / 3600.0
+            elevation = self.solar.get_solar_elevation(now)
+            season_factor = self.solar.get_season_factor(now)
+            w_summary = self.weather.get_summary() if self.weather.enabled else {}
+            curr_temp = w_summary.get("apparent_temperature") or w_summary.get("temperature")
+            curr_clouds = w_summary.get("cloud_cover")
+
+            pred = grp.model.predict(
+                hour_float=hour_float,
+                solar_elevation=elevation,
+                season_factor=season_factor,
+                temp_celsius=curr_temp,
+                cloud_cover=curr_clouds
+            ) if grp else {"brightness": 80, "color_temp": 4000}
+
+            b_val = max(1, min(255, round((pred["brightness"] / 100.0) * 255)))
+            k_val = pred["color_temp"]
+
+            self.ignore_updates.add(entity_id)
+            await self.client.call_service("light", "turn_on", {
+                "entity_id": entity_id,
+                "brightness": b_val,
+                "color_temp_kelvin": k_val,
+                "transition": 1
+            })
+            cur = self.light_states.get(entity_id, {})
+            cur["state"] = "on"
+            cur["brightness"] = pred["brightness"]
+            cur["color_temp"] = k_val
+            self.light_states[entity_id] = cur
+            self.db.record_light_state(entity_id, pred["brightness"], k_val, "on")
+            grp_name = grp.name if grp else "受控灯具"
+            add_log(f"[{grp_name}] 勾选开启灯具: {entity_id} (节律设定: {pred['brightness']}% / {k_val}K)")
+        else:
+            self.ignore_updates.add(entity_id)
+            await self.client.call_service("light", "turn_off", {
+                "entity_id": entity_id,
+                "transition": 1
+            })
+            cur = self.light_states.get(entity_id, {})
+            cur["state"] = "off"
+            cur["brightness"] = 0
+            self.light_states[entity_id] = cur
+            self.db.record_light_state(entity_id, 0, cur.get("color_temp", 4000), "off")
+            grp_name = grp.name if grp else "受控灯具"
+            add_log(f"[{grp_name}] 取消勾选关闭灯具: {entity_id}")
+
+        return {
+            "ok": True,
+            "entity_id": entity_id,
+            "state": target_state,
+            "light": self.light_states.get(entity_id, {})
+        }
+
+    async def apply_suggested_lights(self, group_id: str) -> dict:
+        """根据算法建议数量，一键按优先级勾选开启/关闭灯具"""
+        target_groups = []
+        if group_id == "__all__":
+            target_groups = list(self.groups.values())
+        elif group_id in self.groups:
+            target_groups = [self.groups[group_id]]
+
+        if not target_groups:
+            return {"ok": False, "message": "未找到指定分组"}
+
+        now = self.get_current_time()
+        h_float = now.hour + now.minute / 60.0 + now.second / 3600.0
+        elevation = self.solar.get_solar_elevation(now)
+        season_factor = self.solar.get_season_factor(now)
+        w_summary = self.weather.get_summary() if self.weather.enabled else {}
+        curr_temp = w_summary.get("apparent_temperature") or w_summary.get("temperature")
+        curr_clouds = w_summary.get("cloud_cover")
+
+        total_turned_on = 0
+        for grp in target_groups:
+            pred = grp.model.predict(
+                hour_float=h_float,
+                solar_elevation=elevation,
+                season_factor=season_factor,
+                temp_celsius=curr_temp,
+                cloud_cover=curr_clouds
+            )
+            target_count = pred.get("light_count", 1)
+            b_val = max(1, min(255, round((pred["brightness"] / 100.0) * 255)))
+            k_val = pred["color_temp"]
+
+            for idx, ent in enumerate(grp.light_entities):
+                if idx < target_count:
+                    self.ignore_updates.add(ent)
+                    await self.client.call_service("light", "turn_on", {
+                        "entity_id": ent,
+                        "brightness": b_val,
+                        "color_temp_kelvin": k_val,
+                        "transition": 1
+                    })
+                    cur = self.light_states.get(ent, {})
+                    cur["state"] = "on"
+                    cur["brightness"] = pred["brightness"]
+                    cur["color_temp"] = k_val
+                    self.light_states[ent] = cur
+                    self.db.record_light_state(ent, pred["brightness"], k_val, "on")
+                    total_turned_on += 1
+                else:
+                    self.ignore_updates.add(ent)
+                    await self.client.call_service("light", "turn_off", {
+                        "entity_id": ent,
+                        "transition": 1
+                    })
+                    cur = self.light_states.get(ent, {})
+                    cur["state"] = "off"
+                    cur["brightness"] = 0
+                    self.light_states[ent] = cur
+                    self.db.record_light_state(ent, 0, cur.get("color_temp", 4000), "off")
+
+            add_log(f"[{grp.name}] 应用建议配置: 开启前 {target_count} 盏灯")
+
+        return {"ok": True, "turned_on": total_turned_on}
+
     def get_current_time(self) -> datetime:
         return datetime.now(self.tz) + timedelta(seconds=self.time_offset_seconds)
 
@@ -283,6 +431,7 @@ class GoodLightService:
             try:
                 st = await self.client.get_state(ent)
                 if st:
+                    self.update_cached_state(ent, st)
                     state_str = st.get("state", "off")
                     attrs = st.get("attributes", {})
                     b = attrs.get("brightness")
@@ -304,6 +453,7 @@ class GoodLightService:
                 for ent in self.entity_to_group.keys():
                     st = await self.client.get_state(ent)
                     if st:
+                        self.update_cached_state(ent, st)
                         state_str = st.get("state", "off")
                         attrs = st.get("attributes", {})
                         b = attrs.get("brightness")
@@ -323,6 +473,9 @@ class GoodLightService:
 
         old_state = event_data.get("old_state") or {}
         new_state = event_data.get("new_state") or {}
+
+        if new_state:
+            self.update_cached_state(entity_id, new_state)
 
         old_s = old_state.get("state")
         new_s = new_state.get("state")

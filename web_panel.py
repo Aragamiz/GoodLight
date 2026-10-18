@@ -586,17 +586,44 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <select id="group-select" onchange="onGroupChange(this.value)"></select>
       </div>
       <div class="stat-val" id="predict-target" style="font-size: 20px;">--% / --K</div>
-      <div class="stat-sub" id="predict-count">建议开灯数: -- 盏</div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+        <div class="stat-sub" id="predict-count" style="margin-top: 0;">建议开启灯具: -- 盏</div>
+        <button id="btn-apply-suggestion" class="btn-action" style="padding: 2px 8px; font-size: 11px;" onclick="applySuggestedLights()">⚡ 应用建议</button>
+      </div>
     </div>
     <div class="card">
       <div class="card-title"><span id="card-title-perf">系统性能占用</span> <span>⚡</span></div>
       <div class="stat-val" id="proc-cpu">CPU: --%</div>
       <div class="stat-sub" id="proc-mem">内存: -- MB | 运行: --</div>
     </div>
-    <div class="card">
-      <div class="card-title"><span id="card-title-current">当前分组灯具</span> <span>🎛️</span></div>
-      <div class="stat-val" style="font-size: 16px;" id="current-group-name">--</div>
-      <div class="stat-sub" id="current-group-lights">--</div>
+    <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+      <div>
+        <div class="card-title">
+          <span id="card-title-current">受控灯光状态与勾选控制</span> <span>🎛️</span>
+        </div>
+        <div style="font-size: 12px; color: var(--subtext); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+          <span id="current-group-name" style="font-weight: 500;">--</span>
+          <span id="active-summary" style="font-size: 11px; color: var(--primary); font-weight: 600;">--</span>
+        </div>
+
+        <!-- 首页只显示勾选开启的灯具 -->
+        <div id="active-lights-container" style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 12px; color: var(--subtext); padding: 4px 0;">--</div>
+        </div>
+      </div>
+
+      <!-- 未勾选灯具放入二级菜单 -->
+      <div style="margin-top: 10px;">
+        <details id="inactive-lights-details" class="secondary-menu" style="background: #090e1a; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;">
+          <summary style="font-size: 12px; color: var(--subtext); cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+            <span id="lbl-inactive-menu">📁 未勾选灯具 (二级菜单)</span>
+            <span id="inactive-badge" style="background: #1e293b; color: #94a3b8; font-size: 11px; padding: 1px 6px; border-radius: 10px; font-weight: 600;">0</span>
+          </summary>
+          <div id="inactive-lights-container" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 140px; overflow-y: auto;">
+            <!-- 动态填充未勾选关闭的灯具 -->
+          </div>
+        </details>
+      </div>
     </div>
   </div>
 
@@ -666,11 +693,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         cardSolar: "天体与节气感知",
         cardGroup: "分组选择与预测",
         cardPerf: "系统性能占用",
-        cardCurrent: "当前分组灯具",
+        cardCurrent: "受控灯光状态与勾选控制",
         cardPerfChart: "系统性能时序曲线 (CPU % & 内存占用)",
         cardLogs: "实时运行与学习日志",
         tableTitle: "24小时自适应曲线",
         btnSyncHistoryDash: "🔄 从 HA 历史回溯学习曲线 (14天)",
+        lblInactiveMenu: "📁 未勾选灯具 (二级菜单)",
+        btnApplySuggestion: "⚡ 应用建议",
         thTime: "时间点",
         thBright: "学习亮度",
         thCct: "学习色温",
@@ -692,11 +721,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         cardSolar: "Solar & Seasonal Terms",
         cardGroup: "Group Target & Prediction",
         cardPerf: "System Performance",
-        cardCurrent: "Active Group Lights",
+        cardCurrent: "Light Controls & Status",
         cardPerfChart: "System Performance Timeline (CPU % & RAM)",
         cardLogs: "Live Cruise & Learning Logs",
         tableTitle: "24-Hour Adaptive Curve Profile",
         btnSyncHistoryDash: "🔄 Sync HA History (14 Days)",
+        lblInactiveMenu: "📁 Inactive Lights (Secondary Menu)",
+        btnApplySuggestion: "⚡ Apply Suggestion",
         thTime: "Time",
         thBright: "Learned Brightness",
         thCct: "Learned CCT",
@@ -746,6 +777,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       el('card-title-perf-chart', t.cardPerfChart);
       el('card-title-logs', t.cardLogs);
       el('btn-sync-history-dash', t.btnSyncHistoryDash);
+      el('lbl-inactive-menu', t.lblInactiveMenu);
+      el('btn-apply-suggestion', t.btnApplySuggestion);
 
       el('th-time', t.thTime);
       el('th-bright', t.thBright);
@@ -1225,6 +1258,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let perfChart = null;
     let lightCharts = {};
     let selectedGroupId = null;
+    let allLightsData = [];
     let groupsData = {};
 
     function initPerfChart() {
@@ -1425,16 +1459,128 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     let serverCurrentTimeStr = null;
 
+    async function toggleLightState(entityId, willTurnOn) {
+      try {
+        const resp = await fetch('/api/control/light_toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            entity_id: entityId,
+            state: willTurnOn ? 'on' : 'off'
+          })
+        });
+        const res = await resp.json();
+        if (res.ok) {
+          await updateDashboard();
+        }
+      } catch (e) {
+        console.error('切换灯光失败:', e);
+      }
+    }
+
+    async function applySuggestedLights() {
+      if (!selectedGroupId) return;
+      try {
+        const btn = document.getElementById('btn-apply-suggestion');
+        if (btn) btn.disabled = true;
+        const resp = await fetch('/api/control/apply_suggestion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ group_id: selectedGroupId })
+        });
+        const res = await resp.json();
+        if (res.ok) {
+          await updateDashboard();
+        }
+      } catch (e) {
+        console.error('应用建议失败:', e);
+      } finally {
+        const btn = document.getElementById('btn-apply-suggestion');
+        if (btn) btn.disabled = false;
+      }
+    }
+
     function renderCurrentGroup() {
-      if (!selectedGroupId || !groupsData[selectedGroupId]) return;
-      const g = groupsData[selectedGroupId];
+      if (!selectedGroupId) return;
+      const isAll = (selectedGroupId === '__all__');
+      const g = isAll ? null : groupsData[selectedGroupId];
 
-      document.getElementById('current-group-name').innerText = g.name;
-      document.getElementById('current-group-lights').innerText = g.lights.join(', ');
-      document.getElementById('predict-target').innerText = `${g.prediction.brightness}% / ${g.prediction.color_temp}K`;
-      document.getElementById('predict-count').innerText = (currentLang === 'en' ? 'Recommended Active: ' : '建议开启灯具: ') + `${g.prediction.light_count} ` + (currentLang === 'en' ? 'lights' : '盏');
-      document.getElementById('table-title').innerText = `[${g.name}] ` + (currentLang === 'en' ? '24-Hour Adaptive Curve' : '24小时自适应曲线');
+      const curNameEl = document.getElementById('current-group-name');
+      if (curNameEl) {
+        curNameEl.innerText = isAll ? (currentLang === 'en' ? '🌐 All Monitored Lights' : '🌐 全屋受控灯具') : (g ? g.name : '--');
+      }
 
+      const targetEl = document.getElementById('predict-target');
+      const countEl = document.getElementById('predict-count');
+      const tableTitleEl = document.getElementById('table-title');
+
+      if (isAll) {
+        const gKeys = Object.keys(groupsData);
+        if (gKeys.length > 0) {
+          const firstG = groupsData[gKeys[0]];
+          targetEl.innerText = `${firstG.prediction.brightness}% / ${firstG.prediction.color_temp}K`;
+        }
+        countEl.innerText = (currentLang === 'en' ? 'Total: ' : '全屋总计: ') + allLightsData.length + ' ' + (currentLang === 'en' ? 'lights' : '盏');
+        tableTitleEl.innerText = (currentLang === 'en' ? '[All Groups] 24-Hour Adaptive Curve' : '[全屋基线] 24小时自适应曲线');
+      } else if (g) {
+        targetEl.innerText = `${g.prediction.brightness}% / ${g.prediction.color_temp}K`;
+        countEl.innerText = (currentLang === 'en' ? 'Recommended: ' : '建议开启灯具: ') + `${g.prediction.light_count} ` + (currentLang === 'en' ? 'lights' : '盏');
+        tableTitleEl.innerText = `[${g.name}] ` + (currentLang === 'en' ? '24-Hour Adaptive Curve' : '24小时自适应曲线');
+      }
+
+      // 渲染受控灯光列表：首页只显示勾选的，未勾选放入二级菜单
+      const lights = isAll ? allLightsData : (g ? (g.lights || []) : []);
+      const activeLights = lights.filter(l => l.state === 'on');
+      const inactiveLights = lights.filter(l => l.state !== 'on');
+
+      const activeContainer = document.getElementById('active-lights-container');
+      const inactiveContainer = document.getElementById('inactive-lights-container');
+      const inactiveBadge = document.getElementById('inactive-badge');
+      const activeSummary = document.getElementById('active-summary');
+
+      if (activeSummary) {
+        activeSummary.innerText = `${activeLights.length} / ${lights.length} ` + (currentLang === 'en' ? 'Active' : '已开启');
+      }
+      if (inactiveBadge) {
+        inactiveBadge.innerText = inactiveLights.length;
+      }
+
+      // 1. 首页只显示勾选开启的
+      if (activeContainer) {
+        if (activeLights.length > 0) {
+          activeContainer.innerHTML = activeLights.map(l => `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 5px 8px; transition: 0.2s;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; user-select: none; flex: 1;">
+                <input type="checkbox" checked onchange="toggleLightState('${l.entity_id}', false)" style="width: 15px; height: 15px; accent-color: #38bdf8; cursor: pointer;">
+                <span style="font-size: 13px; font-weight: 600; color: #f8fafc;">💡 ${l.name}</span>
+              </label>
+              <span style="font-size: 11px; font-weight: 600; color: #38bdf8; background: #0b172a; padding: 2px 6px; border-radius: 4px;">${l.brightness}% · ${l.color_temp}K</span>
+            </div>
+          `).join('');
+        } else {
+          activeContainer.innerHTML = `<div style="font-size: 12px; color: var(--subtext); padding: 6px 0; text-align: center;">⚪ ${currentLang === 'en' ? 'No active lights (All off in secondary menu)' : '暂无开启灯具 (均在二级菜单中)'}</div>`;
+        }
+      }
+
+      // 2. 未勾选放入二级菜单
+      if (inactiveContainer) {
+        if (inactiveLights.length > 0) {
+          inactiveContainer.innerHTML = inactiveLights.map(l => `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; user-select: none; flex: 1;">
+                <input type="checkbox" onchange="toggleLightState('${l.entity_id}', true)" style="width: 15px; height: 15px; accent-color: #38bdf8; cursor: pointer;">
+                <span style="font-size: 12px; color: #94a3b8;">${l.name}</span>
+              </label>
+              <span style="font-size: 11px; color: #64748b;">${currentLang === 'en' ? 'Off' : '关闭'}</span>
+            </div>
+          `).join('');
+        } else {
+          inactiveContainer.innerHTML = `<div style="font-size: 11px; color: var(--subtext); padding: 4px 0; text-align: center;">${currentLang === 'en' ? 'All lights are active on Home' : '所有灯具均已开启在首页'}</div>`;
+        }
+      }
+
+      // 3. 渲染24小时曲线表
+      const profileSource = isAll ? (groupsData[Object.keys(groupsData)[0]] || {}).profile : (g ? g.profile : {});
       let currentHour = new Date().getHours();
       if (serverCurrentTimeStr) {
         try {
@@ -1444,23 +1590,25 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
 
       const tbody = document.getElementById('curve-tbody');
-      tbody.innerHTML = '';
-      for (let h = 0; h < 24; h++) {
-        const item = g.profile[h.toString()] || {};
-        const isCurrent = (h === currentHour);
-        const tr = document.createElement('tr');
-        if (isCurrent) tr.className = 'highlight-row';
-        const curLabel = isCurrent ? (currentLang === 'en' ? '👈 (Now)' : '👈 (当前)') : '';
-        const unit = currentLang === 'en' ? 'lights' : '盏';
-        const times = currentLang === 'en' ? 'samples' : '次';
-        tr.innerHTML = `
-          <td>${h.toString().padStart(2, '0')}:00 ${curLabel}</td>
-          <td>${item.brightness || '--'}%</td>
-          <td>${item.color_temp || '--'}K</td>
-          <td>${item.light_count || 1} ${unit}</td>
-          <td>${item.samples_count || 0} ${times}</td>
-        `;
-        tbody.appendChild(tr);
+      if (tbody) {
+        tbody.innerHTML = '';
+        for (let h = 0; h < 24; h++) {
+          const item = (profileSource && profileSource[h.toString()]) || {};
+          const isCurrent = (h === currentHour);
+          const tr = document.createElement('tr');
+          if (isCurrent) tr.className = 'highlight-row';
+          const curLabel = isCurrent ? (currentLang === 'en' ? '👈 (Now)' : '👈 (当前)') : '';
+          const unit = currentLang === 'en' ? 'lights' : '盏';
+          const times = currentLang === 'en' ? 'samples' : '次';
+          tr.innerHTML = `
+            <td>${h.toString().padStart(2, '0')}:00 ${curLabel}</td>
+            <td>${item.brightness || '--'}%</td>
+            <td>${item.color_temp || '--'}K</td>
+            <td>${item.light_count || 1} ${unit}</td>
+            <td>${item.samples_count || 0} ${times}</td>
+          `;
+          tbody.appendChild(tr);
+        }
       }
     }
 
@@ -1506,12 +1654,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         // 分组下拉框更新
         groupsData = data.groups;
+        allLightsData = data.all_lights || [];
         const gSelect = document.getElementById('group-select');
         const existingKeys = Object.keys(groupsData);
         if (existingKeys.length > 0 && !selectedGroupId) {
           selectedGroupId = existingKeys[0];
         }
         gSelect.innerHTML = '';
+
+        // 全屋受控灯具选项
+        const allOpt = document.createElement('option');
+        allOpt.value = '__all__';
+        const allSuffix = currentLang === 'en' ? 'All Monitored Lights' : '全屋受控灯具 (全部分组)';
+        allOpt.innerText = `🌐 ${allSuffix} (${allLightsData.length})`;
+        if (selectedGroupId === '__all__') allOpt.selected = true;
+        gSelect.appendChild(allOpt);
+
         for (const [gid, ginfo] of Object.entries(groupsData)) {
           const opt = document.createElement('option');
           opt.value = gid;
@@ -1572,6 +1730,8 @@ class WebPanel:
         self.app.router.add_post("/api/control/language", self.handle_control_language)
         self.app.router.add_post("/api/control/time_adjust", self.handle_control_time_adjust)
         self.app.router.add_post("/api/control/time_reset", self.handle_control_time_reset)
+        self.app.router.add_post("/api/control/light_toggle", self.handle_control_light_toggle)
+        self.app.router.add_post("/api/control/apply_suggestion", self.handle_control_apply_suggestion)
         self.app.router.add_post("/api/setup/test_connection", self.handle_api_setup_test)
         self.app.router.add_get("/api/setup/discover_lights", self.handle_api_setup_discover)
         self.app.router.add_get("/api/setup/geocode", self.handle_api_setup_geocode)
@@ -1644,13 +1804,33 @@ class WebPanel:
         proc_stats = self.get_process_metrics()
 
         groups_dict = {}
+        all_lights_list = []
         for gid, grp in self.service.groups.items():
             pred = grp.model.predict(h_float, elev, season)
+            grp_lights_data = []
+            for item in grp.lights:
+                ent = item.get("entity_id")
+                st = self.service.light_states.get(ent, {})
+                name = item.get("name") or st.get("friendly_name") or ent
+                light_obj = {
+                    "entity_id": ent,
+                    "name": name,
+                    "group_id": gid,
+                    "group_name": grp.name,
+                    "priority": item.get("priority", 1),
+                    "state": st.get("state", "off"),
+                    "brightness": st.get("brightness", 0),
+                    "color_temp": st.get("color_temp", 4000)
+                }
+                grp_lights_data.append(light_obj)
+                all_lights_list.append(light_obj)
+
             groups_dict[gid] = {
                 "id": grp.id,
                 "name": grp.name,
                 "enabled": grp.enabled,
-                "lights": grp.light_entities,
+                "lights": grp_lights_data,
+                "light_entities": grp.light_entities,
                 "prediction": pred,
                 "profile": grp.model.anchors
             }
@@ -1670,10 +1850,30 @@ class WebPanel:
             "weather": self.service.weather.get_summary() if hasattr(self.service, "weather") else {},
             "process": proc_stats,
             "groups": groups_dict,
+            "all_lights": all_lights_list,
             "logs": list(LOG_BUFFER),
             "ui_language": getattr(self.service, "ui_language", "zh")
         }
         return web.json_response(data)
+
+    async def handle_control_light_toggle(self, request):
+        try:
+            req_data = await request.json()
+            ent = req_data.get("entity_id")
+            target_state = req_data.get("state", "off")
+            res = await self.service.toggle_light(ent, target_state)
+            return web.json_response(res)
+        except Exception as e:
+            return web.json_response({"ok": False, "message": str(e)})
+
+    async def handle_control_apply_suggestion(self, request):
+        try:
+            req_data = await request.json()
+            gid = req_data.get("group_id")
+            res = await self.service.apply_suggested_lights(gid)
+            return web.json_response(res)
+        except Exception as e:
+            return web.json_response({"ok": False, "message": str(e)})
 
     async def handle_control_language(self, request):
         req_data = await request.json()
