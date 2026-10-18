@@ -23,6 +23,7 @@ from model import GoodLightModel
 from ha_client import HAClient
 from web_panel import WebPanel, add_log, set_log_tz
 from db import HistoryDB
+from weather import WeatherService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("GoodLight.Core")
@@ -63,6 +64,11 @@ class GoodLightService:
             latitude=loc_cfg["latitude"],
             longitude=loc_cfg["longitude"],
             tz_offset_hours=self.tz_offset
+        )
+        self.weather = WeatherService(
+            lat=loc_cfg.get("latitude", 39.9042),
+            lon=loc_cfg.get("longitude", 116.4074),
+            enabled=self.cfg.get("weather", {}).get("enabled", True)
         )
         self.client = HAClient(base_url=ha_url, token=ha_token)
         self.db = HistoryDB(db_path="history.db")
@@ -139,6 +145,13 @@ class GoodLightService:
             if groups:
                 self.cfg["groups"] = groups
 
+            # 更新天气感知开关
+            weather_enabled = bool(setup_data.get("weather_enabled", True))
+            if "weather" not in self.cfg:
+                self.cfg["weather"] = {}
+            self.cfg["weather"]["enabled"] = weather_enabled
+            self.weather.enabled = weather_enabled
+
             # 持久化写入配置文件
             with open(self.config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
@@ -149,6 +162,7 @@ class GoodLightService:
             self.solar.latitude = lat
             self.solar.longitude = lng
             self.update_timezone(tz_offset)
+            asyncio.create_task(self.weather.update_location(lat, lng))
             # 重新加载分组
             self._init_groups()
             asyncio.create_task(self._init_light_states())
@@ -168,10 +182,19 @@ class GoodLightService:
         add_log(msg)
 
         await self.web_panel.start()
+        asyncio.create_task(self._weather_loop())
         asyncio.create_task(self._metrics_sampler_loop())
         self.client.register_event_listener(self.on_state_changed)
         asyncio.create_task(self._init_light_states())
         await self.client.connect()
+
+    async def _weather_loop(self):
+        while True:
+            try:
+                await self.weather.fetch_weather()
+            except Exception as e:
+                logger.debug(f"天气拉取异常: {e}")
+            await asyncio.sleep(600)  # 每10分钟更新一次天气数据
 
     async def _init_light_states(self):
         await asyncio.sleep(2)
@@ -256,10 +279,16 @@ class GoodLightService:
         term_name, term_prog = self.solar.get_solar_term(dt)
         season_factor = self.solar.get_season_factor(dt)
 
+        w_summary = self.weather.get_summary() if self.weather.enabled else {}
+        curr_temp = w_summary.get("apparent_temperature") or w_summary.get("temperature")
+        curr_clouds = w_summary.get("cloud_cover")
+
         pred = grp.model.predict(
             hour_float=hour_float,
             solar_elevation=elevation,
-            season_factor=season_factor
+            season_factor=season_factor,
+            temp_celsius=curr_temp,
+            cloud_cover=curr_clouds
         )
         t_model_ms = (time.perf_counter() - t0) * 1000.0
 

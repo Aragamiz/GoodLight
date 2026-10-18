@@ -73,7 +73,7 @@ class GoodLightModel:
         except Exception as e:
             print(f"[Model] 保存偏好失败: {e}")
 
-    def predict(self, hour_float: float, solar_elevation: float, season_factor: float, temp_celsius: float = None) -> Dict[str, Any]:
+    def predict(self, hour_float: float, solar_elevation: float, season_factor: float, temp_celsius: float = None, cloud_cover: int = None) -> Dict[str, Any]:
         """
         根据当前状态预测：
         - 目标亮度 (%)
@@ -94,7 +94,6 @@ class GoodLightModel:
         base_count = round(p1["light_count"] + (p2["light_count"] - p1["light_count"]) * smooth_t)
 
         # 2. 太阳真实高度角自然校准 (Solar Elevation Compensation)
-        # 若大白天阴天下雨太阳虽在上方但高度角弱，微调基础光
         if solar_elevation < -18:  # 天文黑夜
             solar_b_factor = 0.85
             solar_c_offset = -200
@@ -108,15 +107,22 @@ class GoodLightModel:
         # 3. 节气与季节冷暖补偿 (夏至凉白 +300K, 冬至暖黄 -300K)
         season_c_offset = season_factor * 300.0
 
-        # 4. 温度微调 (温度低偏暖，温度高偏冷)
+        # 4. 环境气温冷暖自适应微调 (温度偏低加暖，温度偏高加凉)
         temp_c_offset = 0
         if temp_celsius is not None:
             if temp_celsius < 10:
-                temp_c_offset = -250  # 天冷加暖
-            elif temp_celsius > 30:
-                temp_c_offset = +250  # 天热加凉
+                temp_c_offset = -250  # 寒冷加暖
+            elif temp_celsius > 28:
+                temp_c_offset = +200  # 炎热加凉
 
-        final_brightness = max(1.0, min(100.0, base_brightness * solar_b_factor))
+        # 5. 云量采光与阴雨天光照补偿 (Cloud Cover Brightness Boost)
+        # 白天如果云层浓密 (>50%)，户外天然采光不足，室内平滑提高亮度补偿
+        cloud_b_factor = 1.0
+        if cloud_cover is not None and solar_elevation > 0:
+            if cloud_cover > 50:
+                cloud_b_factor = 1.0 + 0.20 * ((cloud_cover - 50) / 50.0)
+
+        final_brightness = max(1.0, min(100.0, base_brightness * solar_b_factor * cloud_b_factor))
         final_color_temp = max(2500, min(6500, round(base_color_temp + solar_c_offset + season_c_offset + temp_c_offset)))
         final_count = max(1, base_count)
 

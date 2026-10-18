@@ -421,49 +421,81 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       </div>
 
-      <!-- Step 4: 补足各种信息 -->
+      <!-- Step 4: 补足各种信息 (全球地址与气象配置) -->
       <div id="wizard-step-4" style="display: none;">
-        <h2 style="font-size: 18px; color: var(--primary); margin-bottom: 6px;">🌍 补足地理位置与时区信息</h2>
+        <h2 style="font-size: 18px; color: var(--primary); margin-bottom: 6px;">🌍 全球地址搜索与环境气象配置</h2>
         <div style="font-size: 13px; color: var(--subtext); margin-bottom: 16px;">
-          经纬度用于精确计算太阳真实高度角与真太阳时，匹配自然的昼夜照明节律。
+          GoodLight 面向全球用户，输入任何城市或地址即可自动定位经纬度、推算太阳高度角与本地时区。
         </div>
 
-        <label style="font-size: 13px; font-weight: 600; color: var(--text);">快捷选择城市一键填充坐标：</label>
-        <div style="margin: 8px 0 16px;">
-          <span class="city-pill" onclick="setCity(39.9042, 116.4074)">北京</span>
-          <span class="city-pill" onclick="setCity(31.2304, 121.4737)">上海</span>
-          <span class="city-pill" onclick="setCity(23.1291, 113.2644)">广州</span>
-          <span class="city-pill" onclick="setCity(22.5431, 114.0579)">深圳</span>
-          <span class="city-pill" onclick="setCity(30.2741, 120.1551)">杭州</span>
-          <span class="city-pill" onclick="setCity(30.5728, 104.0668)">成都</span>
-          <span class="city-pill" onclick="setCity(30.5928, 114.3055)">武汉</span>
-          <span class="city-pill" onclick="setCity(34.3416, 108.9398)">西安</span>
-          <span class="city-pill" onclick="setCity(29.5630, 106.5516)">重庆</span>
-          <span class="city-pill" onclick="setCity(32.0603, 118.7969)">南京</span>
+        <label style="font-size: 13px; font-weight: 600; color: var(--text);">全球地址/城市搜索 (支持中文或英文)：</label>
+        <div style="display: flex; gap: 8px; margin: 8px 0 10px;">
+          <input type="text" id="wiz-geo-search" class="wiz-input" style="margin: 0; flex: 1;" placeholder="输入全球任意城市，如: London, Tokyo, New York, 巴黎, 武汉, 悉尼..." onkeydown="if(event.key==='Enter') searchLocation()">
+          <button class="wiz-btn-primary" style="white-space: nowrap;" onclick="searchLocation()">🔍 全球搜索</button>
+        </div>
+
+        <!-- 搜索结果下拉候选框 -->
+        <div id="geo-results-box" style="display: none; background: #090e1a; border: 1px solid var(--border); border-radius: 8px; max-height: 160px; overflow-y: auto; margin-bottom: 14px; padding: 6px;"></div>
+
+        <div style="font-size: 12px; color: var(--subtext); margin-bottom: 6px;">热门全球大都市快捷填充：</div>
+        <div style="margin-bottom: 16px;">
+          <span class="city-pill" onclick="setCity(39.9042, 116.4074, 8.0, '北京, 中国')">🇨🇳 北京</span>
+          <span class="city-pill" onclick="setCity(35.6895, 139.6917, 9.0, 'Tokyo, Japan')">🇯🇵 东京</span>
+          <span class="city-pill" onclick="setCity(51.5074, -0.1278, 0.0, 'London, UK')">🇬🇧 伦敦</span>
+          <span class="city-pill" onclick="setCity(48.8566, 2.3522, 1.0, 'Paris, France')">🇫🇷 巴黎</span>
+          <span class="city-pill" onclick="setCity(52.5200, 13.4050, 1.0, 'Berlin, Germany')">🇩🇪 柏林</span>
+          <span class="city-pill" onclick="setCity(40.7128, -74.0060, -5.0, 'New York, USA')">🇺🇸 纽约</span>
+          <span class="city-pill" onclick="setCity(34.0522, -118.2437, -8.0, 'Los Angeles, USA')">🇺🇸 洛杉矶</span>
+          <span class="city-pill" onclick="setCity(-33.8688, 151.2093, 10.0, 'Sydney, Australia')">🇦🇺 悉尼</span>
+          <span class="city-pill" onclick="setCity(1.3521, 103.8198, 8.0, 'Singapore')">🇸🇬 新加坡</span>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
           <div>
             <label style="font-size: 13px; font-weight: 600; color: var(--text);">纬度 (Latitude):</label>
-            <input type="number" id="wiz-lat" class="wiz-input" step="0.0001" value="39.9042">
+            <input type="number" id="wiz-lat" class="wiz-input" step="0.0001" value="39.9042" onchange="previewWeatherForCoords()">
           </div>
           <div>
             <label style="font-size: 13px; font-weight: 600; color: var(--text);">经度 (Longitude):</label>
-            <input type="number" id="wiz-lng" class="wiz-input" step="0.0001" value="116.4074">
+            <input type="number" id="wiz-lng" class="wiz-input" step="0.0001" value="116.4074" onchange="previewWeatherForCoords()">
           </div>
         </div>
 
         <label style="font-size: 13px; font-weight: 600; color: var(--text);">本地时区 (Timezone):</label>
         <select id="wiz-tz" class="wiz-input" style="height: 42px;">
-          <option value="8.0" selected>UTC+8 (北京 / 上海 / 香港 / 台北)</option>
+          <option value="12.0">UTC+12 (奥克兰 / 斐济)</option>
+          <option value="10.0">UTC+10 (悉尼 / 墨尔本)</option>
           <option value="9.0">UTC+9 (东京 / 首尔)</option>
-          <option value="0.0">UTC+0 (伦敦 / GMT)</option>
-          <option value="1.0">UTC+1 (巴黎 / 柏林)</option>
-          <option value="-5.0">UTC-5 (纽约 / 美东)</option>
-          <option value="-8.0">UTC-8 (旧金山 / 洛杉矶)</option>
+          <option value="8.0" selected>UTC+8 (北京 / 上海 / 香港 / 台北 / 新加坡)</option>
+          <option value="7.0">UTC+7 (曼谷 / 雅加达)</option>
+          <option value="5.5">UTC+5.5 (新德里 / 孟买)</option>
+          <option value="4.0">UTC+4 (迪拜)</option>
+          <option value="3.0">UTC+3 (莫斯科 / 伊斯坦布尔)</option>
+          <option value="2.0">UTC+2 (开罗 / 雅典)</option>
+          <option value="1.0">UTC+1 (巴黎 / 柏林 / 罗马 / 马德里)</option>
+          <option value="0.0">UTC+0 (伦敦 / 都柏林 / 格林尼治 GMT)</option>
+          <option value="-3.0">UTC-3 (圣保罗 / 布宜诺斯艾利斯)</option>
+          <option value="-5.0">UTC-5 (纽约 / 多伦多 / 华盛顿)</option>
+          <option value="-6.0">UTC-6 (芝加哥 / 墨西哥城)</option>
+          <option value="-7.0">UTC-7 (丹佛 / 凤凰城)</option>
+          <option value="-8.0">UTC-8 (旧金山 / 洛杉矶 / 西雅图 / 温哥华)</option>
+          <option value="-10.0">UTC-10 (夏威夷檀香山)</option>
         </select>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px;">
+        <!-- 天气与环境温度联动开关 -->
+        <div style="background: #090e1a; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 14px;">
+          <label style="font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="wiz-weather-toggle" checked style="width: 16px; height: 16px;">
+            <span>⛅ 启用全球实时气象与温度自适应联动 (基于 Open-Meteo 免 Key 公开气象服务)</span>
+          </label>
+          <div style="font-size: 12px; color: var(--subtext); margin-top: 6px; margin-left: 24px; line-height: 1.5;">
+            • <strong>环境气温色温补偿</strong>：寒冷时自动增添温暖色调 (-250K)，炎热时增加冷静清爽感 (+200K)<br>
+            • <strong>阴雨云量采光补偿</strong>：白天厚重云层 (云量>50%) 自动调高室内亮度，补偿天然采光不足
+          </div>
+          <div id="wiz-weather-preview" style="font-size: 12px; color: var(--primary); margin-top: 8px; margin-left: 24px;"></div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px; margin-top: 18px;">
           <button class="wiz-btn-secondary" onclick="goToStep(3)">← 上一步</button>
           <button class="wiz-btn-primary" onclick="goToStep(5)">下一步：完成确认 →</button>
         </div>
@@ -481,6 +513,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div><strong style="color: var(--primary);">长期访问令牌:</strong> <span id="summary-token">已配置</span></div>
           <div><strong style="color: var(--primary);">自适应托管灯组:</strong> <span id="summary-groups">--</span></div>
           <div><strong style="color: var(--primary);">地理坐标与时区:</strong> <span id="summary-loc">--</span></div>
+          <div><strong style="color: var(--primary);">全球气象与温度感知:</strong> <span id="summary-weather">--</span></div>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px;">
@@ -529,6 +562,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="card-title">天体与节气感知 <span>☀️</span></div>
       <div class="stat-val" id="solar-term">--</div>
       <div class="stat-sub" id="solar-elevation">太阳高度角: --°</div>
+      <div class="stat-sub" id="weather-line" style="color: var(--primary); margin-top: 4px;">⛅ 实时气象: 获取中...</div>
     </div>
     <div class="card">
       <div class="card-title">分组选择与预测 <span>💡</span></div>
@@ -644,6 +678,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (data.latitude) document.getElementById('wiz-lat').value = data.latitude;
         if (data.longitude) document.getElementById('wiz-lng').value = data.longitude;
         if (data.timezone_offset) document.getElementById('wiz-tz').value = data.timezone_offset.toFixed(1);
+        if (data.weather_enabled !== undefined) {
+          document.getElementById('wiz-weather-toggle').checked = !!data.weather_enabled;
+        }
+        previewWeatherForCoords();
 
         if (data.groups) {
           data.groups.forEach(g => {
@@ -813,9 +851,91 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       renderDiscoveredLights();
     }
 
-    function setCity(lat, lng) {
+    function setCity(lat, lng, tz, label) {
       document.getElementById('wiz-lat').value = lat;
       document.getElementById('wiz-lng').value = lng;
+      if (tz !== undefined) {
+        document.getElementById('wiz-tz').value = parseFloat(tz).toFixed(1);
+      }
+      previewWeatherForCoords();
+    }
+
+    async function searchLocation() {
+      const q = document.getElementById('wiz-geo-search').value.trim();
+      const resultsBox = document.getElementById('geo-results-box');
+      if (!q) return;
+      resultsBox.style.display = 'block';
+      resultsBox.innerHTML = '<div style="color:var(--primary);padding:10px;font-size:12px;">⏳ 正在通过全球地理编码引擎检索地址...</div>';
+      try {
+        const resp = await fetch(`/api/setup/geocode?query=${encodeURIComponent(q)}`);
+        const res = await resp.json();
+        if (res.ok && res.results && res.results.length > 0) {
+          resultsBox.innerHTML = '';
+          res.results.forEach(item => {
+            const div = document.createElement('div');
+            div.style.padding = '8px 12px';
+            div.style.borderBottom = '1px solid var(--border)';
+            div.style.cursor = 'pointer';
+            div.style.fontSize = '13px';
+            div.style.display = 'flex';
+            div.style.justifyContent = 'space-between';
+            div.style.alignItems = 'center';
+            div.onmouseover = () => { div.style.background = 'rgba(56, 189, 248, 0.1)'; };
+            div.onmouseout = () => { div.style.background = 'transparent'; };
+
+            const title = [item.name, item.admin1, item.country].filter(Boolean).join(', ');
+            const tzStr = item.timezone ? `时区: ${item.timezone} (UTC${item.timezone_offset >= 0 ? '+' : ''}${item.timezone_offset})` : '';
+
+            div.innerHTML = `
+              <div>
+                <span style="font-weight:600;color:var(--text);">📍 ${title}</span>
+                <span style="color:var(--subtext);font-size:11px;margin-left:8px;">${tzStr}</span>
+              </div>
+              <div style="font-family:monospace;font-size:11px;color:var(--primary);">
+                ${item.latitude.toFixed(4)}°, ${item.longitude.toFixed(4)}°
+              </div>
+            `;
+            div.onclick = () => {
+              document.getElementById('wiz-lat').value = item.latitude.toFixed(4);
+              document.getElementById('wiz-lng').value = item.longitude.toFixed(4);
+              if (item.timezone_offset !== undefined) {
+                document.getElementById('wiz-tz').value = item.timezone_offset.toFixed(1);
+              }
+              resultsBox.style.display = 'none';
+              previewWeatherForCoords();
+            };
+            resultsBox.appendChild(div);
+          });
+        } else {
+          resultsBox.innerHTML = '<div style="color:var(--subtext);padding:10px;font-size:12px;">未检索到对应地名，可尝试输入英文或拼音。</div>';
+        }
+      } catch (e) {
+        resultsBox.innerHTML = `<div style="color:var(--rose);padding:10px;font-size:12px;">检索失败: ${e.message}</div>`;
+      }
+    }
+
+    async function previewWeatherForCoords() {
+      const lat = parseFloat(document.getElementById('wiz-lat').value);
+      const lng = parseFloat(document.getElementById('wiz-lng').value);
+      const previewBox = document.getElementById('wiz-weather-preview');
+      if (!previewBox || isNaN(lat) || isNaN(lng)) return;
+      previewBox.innerText = '⏳ 正在预览当地气象与体感温度...';
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,apparent_temperature,weather_code,cloud_cover&timezone=auto`;
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const d = await resp.json();
+          const curr = d.current || {};
+          const t = curr.temperature_2m;
+          const ap = curr.apparent_temperature;
+          const cc = curr.cloud_cover;
+          previewBox.innerHTML = `📍 <strong>当地实时气象</strong>: 气温 <strong>${t}°C</strong> (体感 ${ap}°C) | 云量 <strong>${cc}%</strong> | 时区偏移: UTC${d.utc_offset_seconds>=0?'+':''}${d.utc_offset_seconds/3600}h`;
+        } else {
+          previewBox.innerText = '（坐标已就绪，保存后将自动感知气象）';
+        }
+      } catch (e) {
+        previewBox.innerText = '（坐标已更新，将在后台自动同步）';
+      }
     }
 
     function renderSummary() {
@@ -824,6 +944,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const lat = document.getElementById('wiz-lat').value;
       const lng = document.getElementById('wiz-lng').value;
       const tz = document.getElementById('wiz-tz').value;
+      const weatherOn = document.getElementById('wiz-weather-toggle').checked;
 
       document.getElementById('summary-url').innerText = url;
       document.getElementById('summary-token').innerText = token ? (token.substring(0, 10) + '...' + token.slice(-8)) : (existingConfig.has_token ? '保持现有已配置令牌' : '未提供');
@@ -832,6 +953,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const groupsFound = new Set(Object.values(lightGroupAssignments).map(v => v.group_id));
       document.getElementById('summary-groups').innerText = `${assignedEnts.length} 盏灯具分配在 ${groupsFound.size} 个独立受控组中`;
       document.getElementById('summary-loc').innerText = `纬度: ${lat}°, 经度: ${lng}°, 时区: UTC+${tz}`;
+      document.getElementById('summary-weather').innerText = weatherOn ? '已启用 (基于 Open-Meteo 实时气温与云量双重光补偿)' : '已停用';
     }
 
     async function finishWizard() {
@@ -844,6 +966,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const lat = parseFloat(document.getElementById('wiz-lat').value) || 39.9042;
       const lng = parseFloat(document.getElementById('wiz-lng').value) || 116.4074;
       const tz = parseFloat(document.getElementById('wiz-tz').value) || 8.0;
+      const weather_enabled = document.getElementById('wiz-weather-toggle').checked;
 
       // 构建 groups
       const groupMap = {
@@ -874,6 +997,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         latitude: lat,
         longitude: lng,
         timezone_offset: tz,
+        weather_enabled: weather_enabled,
         groups: activeGroups.length > 0 ? activeGroups : existingConfig.groups
       };
 
@@ -1154,6 +1278,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         document.getElementById('solar-term').innerText = `${data.solar.term} (进度: ${(data.solar.term_progress * 100).toFixed(0)}%)`;
         document.getElementById('solar-elevation').innerText = `太阳高度角: ${data.solar.elevation.toFixed(1)}° | 季节因子: ${data.solar.season_factor.toFixed(2)}`;
 
+        const weatherLine = document.getElementById('weather-line');
+        if (weatherLine) {
+          if (data.weather && data.weather.enabled && data.weather.temperature !== null) {
+            weatherLine.innerText = `⛅ 实时气象: ${data.weather.weather_desc} | 气温: ${data.weather.temperature}°C (体感: ${data.weather.apparent_temperature}°C) | 云量: ${data.weather.cloud_cover}%`;
+          } else if (data.weather && !data.weather.enabled) {
+            weatherLine.innerText = `⛅ 实时气象: 未启用环境气象感知`;
+          } else {
+            weatherLine.innerText = `⛅ 实时气象: 正在同步中...`;
+          }
+        }
+
         document.getElementById('proc-cpu').innerText = `CPU: ${data.process.cpu_percent}%`;
         document.getElementById('proc-mem').innerText = `物理内存: ${data.process.mem_rss_mb} MB | 虚拟内存: ${data.process.mem_vms_mb} MB | 运行: ${data.process.uptime}`;
 
@@ -1221,6 +1356,7 @@ class WebPanel:
         self.app.router.add_post("/api/control/time_reset", self.handle_control_time_reset)
         self.app.router.add_post("/api/setup/test_connection", self.handle_api_setup_test)
         self.app.router.add_get("/api/setup/discover_lights", self.handle_api_setup_discover)
+        self.app.router.add_get("/api/setup/geocode", self.handle_api_setup_geocode)
         self.app.router.add_get("/api/setup/current_config", self.handle_api_setup_get_config)
         self.app.router.add_post("/api/setup/save", self.handle_api_setup_save)
         self._last_cpu_time = 0.0
@@ -1312,6 +1448,7 @@ class WebPanel:
                 "elevation": round(elev, 2),
                 "season_factor": round(season, 2)
             },
+            "weather": self.service.weather.get_summary() if hasattr(self.service, "weather") else {},
             "process": proc_stats,
             "groups": groups_dict,
             "logs": list(LOG_BUFFER)
@@ -1362,6 +1499,50 @@ class WebPanel:
         except Exception as e:
             return web.json_response({"ok": False, "message": str(e), "lights": []})
 
+    async def handle_api_setup_geocode(self, request):
+        query = request.query.get("query", "").strip()
+        if not query:
+            return web.json_response({"ok": False, "results": [], "message": "请输入要检索的地名或城市"})
+
+        url = f"https://geocoding-api.open-meteo.com/v1/search?name={query}&count=6&language=zh,en&format=json"
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status != 200:
+                        return web.json_response({"ok": False, "results": [], "message": f"HTTP {resp.status}"})
+                    data = await resp.json()
+                    raw_results = data.get("results", []) or []
+                    results = []
+                    for r in raw_results:
+                        lat = float(r.get("latitude", 0.0))
+                        lng = float(r.get("longitude", 0.0))
+                        tz_name = r.get("timezone", "")
+                        tz_offset = 8.0
+                        if tz_name:
+                            try:
+                                from zoneinfo import ZoneInfo
+                                now_tz = datetime.now(ZoneInfo(tz_name))
+                                if now_tz.utcoffset() is not None:
+                                    tz_offset = round(now_tz.utcoffset().total_seconds() / 3600.0, 1)
+                            except Exception:
+                                tz_offset = round(lng / 15.0, 1)
+                        else:
+                            tz_offset = round(lng / 15.0, 1)
+
+                        results.append({
+                            "name": r.get("name", ""),
+                            "country": r.get("country", ""),
+                            "admin1": r.get("admin1", ""),
+                            "latitude": lat,
+                            "longitude": lng,
+                            "timezone": tz_name,
+                            "timezone_offset": tz_offset
+                        })
+                    return web.json_response({"ok": True, "results": results})
+        except Exception as e:
+            return web.json_response({"ok": False, "results": [], "message": str(e)})
+
     async def handle_api_setup_get_config(self, request):
         cfg = self.service.cfg
         ha_cfg = cfg.get("home_assistant", {})
@@ -1375,6 +1556,7 @@ class WebPanel:
             "latitude": loc_cfg.get("latitude", 39.9042),
             "longitude": loc_cfg.get("longitude", 116.4074),
             "timezone_offset": self.service.tz_offset,
+            "weather_enabled": self.service.weather.enabled if hasattr(self.service, "weather") else True,
             "groups": cfg.get("groups", [])
         })
 
