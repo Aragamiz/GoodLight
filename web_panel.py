@@ -1462,6 +1462,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             container.appendChild(card);
 
             const ctx = document.getElementById(`canvas-${safeId}`).getContext('2d');
+            const hasColorTemp = hData.color_temp.some(v => v !== null && v > 0);
             lightCharts[entityId] = new Chart(ctx, {
               type: 'line',
               data: {
@@ -1473,6 +1474,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     borderColor: '#4ade80',
                     backgroundColor: 'rgba(74, 222, 128, 0.1)',
                     tension: 0.3,
+                    spanGaps: true,
                     yAxisID: 'y'
                   },
                   {
@@ -1481,6 +1483,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     borderColor: '#fb7185',
                     backgroundColor: 'rgba(251, 113, 133, 0.1)',
                     tension: 0.3,
+                    spanGaps: true,
+                    hidden: !hasColorTemp,
                     yAxisID: 'y1'
                   }
                 ]
@@ -1498,7 +1502,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     grid: { color: '#1e293b' }, ticks: { color: '#8892b0' }
                   },
                   y1: {
-                    type: 'linear', display: true, position: 'right',
+                    type: 'linear', display: hasColorTemp, position: 'right',
                     title: { display: true, text: '色温 (K)', color: '#fb7185' },
                     grid: { drawOnChartArea: false }, ticks: { color: '#8892b0' }
                   }
@@ -1512,6 +1516,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               chart.data.labels = hData.labels;
               chart.data.datasets[0].data = hData.brightness;
               chart.data.datasets[1].data = hData.color_temp;
+              const hasColorTemp = hData.color_temp.some(v => v !== null && v > 0);
+              chart.data.datasets[1].hidden = !hasColorTemp;
+              if (chart.options.scales.y1) {
+                chart.options.scales.y1.display = hasColorTemp;
+              }
               chart.update();
             }
           }

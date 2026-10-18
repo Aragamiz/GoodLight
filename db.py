@@ -125,33 +125,40 @@ class HistoryDB:
 
     def query_light_history(self, hours: float = 24.0, tz=None) -> Dict[str, Any]:
         start_ts = int(time.time() - hours * 3600)
-        step = 1
+        stride = 1
         if hours > 24 * 7:
-            step = 60
+            stride = 60
         elif hours > 24:
-            step = 15
+            stride = 15
         elif hours > 1:
-            step = 2
+            stride = 2
 
         with self.get_conn() as conn:
             cur = conn.execute("""
                 SELECT timestamp, entity_id, brightness, color_temp 
                 FROM light_history 
-                WHERE timestamp >= ? AND (id % ?) = 0
+                WHERE timestamp >= ?
                 ORDER BY timestamp ASC
-            """, (start_ts, step))
+            """, (start_ts,))
             rows = cur.fetchall()
 
         effective_tz = tz or DEFAULT_TZ
-        entities = {}
+        raw_entities = {}
         for r in rows:
             ent = r["entity_id"]
-            if ent not in entities:
-                entities[ent] = {"labels": [], "brightness": [], "color_temp": []}
-            dt = datetime.fromtimestamp(r["timestamp"], tz=effective_tz)
-            dt_str = dt.strftime("%m-%d %H:%M" if hours > 24 else "%H:%M")
-            entities[ent]["labels"].append(dt_str)
-            entities[ent]["brightness"].append(round(r["brightness"], 1) if r["brightness"] is not None else 0)
-            entities[ent]["color_temp"].append(r["color_temp"] if r["color_temp"] is not None else 0)
+            if ent not in raw_entities:
+                raw_entities[ent] = []
+            raw_entities[ent].append(r)
+
+        entities = {}
+        for ent, ent_rows in raw_entities.items():
+            sampled = ent_rows[::stride]
+            entities[ent] = {"labels": [], "brightness": [], "color_temp": []}
+            for r in sampled:
+                dt = datetime.fromtimestamp(r["timestamp"], tz=effective_tz)
+                dt_str = dt.strftime("%m-%d %H:%M" if hours > 24 else "%H:%M")
+                entities[ent]["labels"].append(dt_str)
+                entities[ent]["brightness"].append(round(r["brightness"], 1) if r["brightness"] is not None else 0)
+                entities[ent]["color_temp"].append(r["color_temp"] if (r["color_temp"] is not None and r["color_temp"] > 0) else None)
 
         return entities

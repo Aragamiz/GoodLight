@@ -87,6 +87,16 @@ class GoodLightService:
     def update_cached_state(self, entity_id: str, st_data: dict):
         state_str = st_data.get("state", "off")
         attrs = st_data.get("attributes", {})
+        modes = attrs.get("supported_color_modes") or []
+
+        # 识别灯具硬件真实能力
+        if modes:
+            has_b = any(m in modes for m in ["brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww"])
+            has_ct = ("color_temp" in modes)
+        else:
+            has_b = ("brightness" in attrs)
+            has_ct = ("color_temp_kelvin" in attrs or "color_temp" in attrs)
+
         b = attrs.get("brightness")
         c = attrs.get("color_temp_kelvin") or attrs.get("color_temp")
         if c and c < 1000:
@@ -94,19 +104,65 @@ class GoodLightService:
                 c = int(1000000 / c)
             except Exception:
                 pass
-        pct_b = round((b / 255.0) * 100, 1) if (state_str == "on" and b is not None) else 0
+
+        min_k = attrs.get("min_color_temp_kelvin")
+        max_k = attrs.get("max_color_temp_kelvin")
+
+        pct_b = round((b / 255.0) * 100, 1) if (state_str == "on" and b is not None) else (100.0 if (state_str == "on" and not has_b) else 0.0)
         friendly_name = attrs.get("friendly_name")
         
         cur = self.light_states.get(entity_id, {})
         cur["state"] = state_str
+        cur["has_brightness"] = has_b
+        cur["has_color_temp"] = has_ct
+        if min_k:
+            cur["min_kelvin"] = min_k
+        if max_k:
+            cur["max_kelvin"] = max_k
         cur["brightness"] = pct_b
         if c:
             cur["color_temp"] = c
-        elif "color_temp" not in cur:
+        elif "color_temp" not in cur and has_ct:
             cur["color_temp"] = 4000
         if friendly_name:
             cur["friendly_name"] = friendly_name
         self.light_states[entity_id] = cur
+
+    def get_light_params(self, entity_id: str, target_b_pct: float, target_k: int):
+        """
+        根据灯具真实物理能力适配控制参数并约束物理边界
+        """
+        st = self.light_states.get(entity_id, {})
+        has_b = st.get("has_brightness", True)
+        has_ct = st.get("has_color_temp", True)
+
+        item_cfg = {}
+        grp = self.entity_to_group.get(entity_id)
+        if grp:
+            item_cfg = next((it for it in grp.lights if it.get("entity_id") == entity_id), {})
+
+        min_k = st.get("min_kelvin") or item_cfg.get("min_kelvin", 2700)
+        max_k = st.get("max_kelvin") or item_cfg.get("max_kelvin", 6500)
+
+        clamped_k = max(min_k, min(max_k, int(target_k))) if has_ct else None
+        clamped_b_pct = target_b_pct if has_b else 100.0
+        clamped_b_255 = max(1, min(255, round((target_b_pct / 100.0) * 255))) if has_b else None
+
+        service_data = {"entity_id": entity_id}
+        if has_b and clamped_b_255 is not None:
+            service_data["brightness"] = clamped_b_255
+        if has_ct and clamped_k is not None:
+            service_data["color_temp_kelvin"] = clamped_k
+
+        return {
+            "has_brightness": has_b,
+            "has_color_temp": has_ct,
+            "min_kelvin": min_k,
+            "max_kelvin": max_k,
+            "clamped_brightness_pct": clamped_b_pct,
+            "clamped_kelvin": clamped_k,
+            "service_data": service_data
+        }
 
     def _init_groups(self):
         self.groups.clear()
@@ -300,24 +356,26 @@ class GoodLightService:
                 cloud_cover=curr_clouds
             ) if grp else {"brightness": 80, "color_temp": 4000}
 
-            b_val = max(1, min(255, round((pred["brightness"] / 100.0) * 255)))
-            k_val = pred["color_temp"]
-
+            params = self.get_light_params(entity_id, pred["brightness"], pred["color_temp"])
             self.ignore_updates.add(entity_id)
-            await self.client.call_service("light", "turn_on", {
-                "entity_id": entity_id,
-                "brightness": b_val,
-                "color_temp_kelvin": k_val,
-                "transition": 1
-            })
+            svc_data = dict(params["service_data"])
+            svc_data["transition"] = 1
+            await self.client.call_service("light", "turn_on", svc_data)
+
             cur = self.light_states.get(entity_id, {})
             cur["state"] = "on"
-            cur["brightness"] = pred["brightness"]
-            cur["color_temp"] = k_val
+            rec_b = params["clamped_brightness_pct"] if params["has_brightness"] else 100.0
+            rec_k = params["clamped_kelvin"] if params["has_color_temp"] else None
+            cur["brightness"] = rec_b
+            if rec_k is not None:
+                cur["color_temp"] = rec_k
             self.light_states[entity_id] = cur
-            self.db.record_light_state(entity_id, pred["brightness"], k_val, "on")
+            self.db.record_light_state(entity_id, rec_b, rec_k, "on")
             grp_name = grp.name if grp else "受控灯具"
-            add_log(f"[{grp_name}] 勾选开启灯具: {entity_id} (节律设定: {pred['brightness']}% / {k_val}K)")
+            log_str = f"{rec_b}%" if params["has_brightness"] else "开"
+            if rec_k is not None:
+                log_str += f" / {rec_k}K"
+            add_log(f"[{grp_name}] 勾选开启灯具: {entity_id} (节律设定: {log_str})")
         else:
             self.ignore_updates.add(entity_id)
             await self.client.call_service("light", "turn_off", {
@@ -368,24 +426,24 @@ class GoodLightService:
                 cloud_cover=curr_clouds
             )
             target_count = pred.get("light_count", 1)
-            b_val = max(1, min(255, round((pred["brightness"] / 100.0) * 255)))
-            k_val = pred["color_temp"]
 
             for idx, ent in enumerate(grp.light_entities):
                 if idx < target_count:
+                    params = self.get_light_params(ent, pred["brightness"], pred["color_temp"])
                     self.ignore_updates.add(ent)
-                    await self.client.call_service("light", "turn_on", {
-                        "entity_id": ent,
-                        "brightness": b_val,
-                        "color_temp_kelvin": k_val,
-                        "transition": 1
-                    })
+                    svc_data = dict(params["service_data"])
+                    svc_data["transition"] = 1
+                    await self.client.call_service("light", "turn_on", svc_data)
+
                     cur = self.light_states.get(ent, {})
                     cur["state"] = "on"
-                    cur["brightness"] = pred["brightness"]
-                    cur["color_temp"] = k_val
+                    rec_b = params["clamped_brightness_pct"] if params["has_brightness"] else 100.0
+                    rec_k = params["clamped_kelvin"] if params["has_color_temp"] else None
+                    cur["brightness"] = rec_b
+                    if rec_k is not None:
+                        cur["color_temp"] = rec_k
                     self.light_states[ent] = cur
-                    self.db.record_light_state(ent, pred["brightness"], k_val, "on")
+                    self.db.record_light_state(ent, rec_b, rec_k, "on")
                     total_turned_on += 1
                 else:
                     self.ignore_updates.add(ent)
@@ -499,22 +557,32 @@ class GoodLightService:
                         if time.time() - last_man < 300:
                             continue
 
+                        params = self.get_light_params(ent, target_b_pct, target_k)
+                        has_b = params["has_brightness"]
+                        has_ct = params["has_color_temp"]
+                        clamped_k = params["clamped_kelvin"]
+                        clamped_b = params["clamped_brightness_pct"]
+
                         curr_b = st.get("brightness", 0)
                         curr_k = st.get("color_temp", 4000)
 
-                        if abs(curr_b - target_b_pct) >= 1.5 or abs(curr_k - target_k) >= 30:
+                        b_diff = abs(curr_b - clamped_b) >= 1.5 if has_b else False
+                        k_diff = abs(curr_k - clamped_k) >= 30 if has_ct else False
+
+                        if b_diff or k_diff:
                             self.ignore_updates.add(ent)
-                            await self.client.call_service("light", "turn_on", {
-                                "entity_id": ent,
-                                "brightness": target_b_255,
-                                "color_temp_kelvin": target_k,
-                                "transition": 15
-                            })
-                            st["brightness"] = target_b_pct
-                            st["color_temp"] = target_k
+                            svc_data = dict(params["service_data"])
+                            svc_data["transition"] = 15
+                            await self.client.call_service("light", "turn_on", svc_data)
+                            if has_b:
+                                st["brightness"] = clamped_b
+                            if has_ct:
+                                st["color_temp"] = clamped_k
                             self.light_states[ent] = st
-                            self.db.record_light_state(ent, target_b_pct, target_k, "on")
-                            logger.debug(f"[{grp.name}] 主动巡航平滑微调: {ent} -> {target_b_pct}% / {target_k}K")
+                            rec_b = clamped_b if has_b else 100.0
+                            rec_k = clamped_k if has_ct else None
+                            self.db.record_light_state(ent, rec_b, rec_k, "on")
+                            logger.debug(f"[{grp.name}] 主动巡航平滑微调: {ent} -> {rec_b}% / {rec_k}K")
             except Exception as e:
                 logger.debug(f"主动巡航循环异常: {e}")
             await asyncio.sleep(30)
@@ -535,11 +603,12 @@ class GoodLightService:
                 if st:
                     self.update_cached_state(ent, st)
                     state_str = st.get("state", "off")
-                    attrs = st.get("attributes", {})
-                    b = attrs.get("brightness")
-                    c = attrs.get("color_temp_kelvin") or attrs.get("color_temp")
-                    pct_b = round((b / 255.0) * 100, 1) if b is not None else 0
-                    self.db.record_light_state(ent, pct_b, c, state_str)
+                    cached = self.light_states.get(ent, {})
+                    has_b = cached.get("has_brightness", True)
+                    has_ct = cached.get("has_color_temp", True)
+                    b = cached.get("brightness", 0.0)
+                    c = cached.get("color_temp") if has_ct else None
+                    self.db.record_light_state(ent, b, c, state_str)
             except Exception as e:
                 logger.debug(f"初始同步灯光状态失败 {ent}: {e}")
 
@@ -557,11 +626,12 @@ class GoodLightService:
                     if st:
                         self.update_cached_state(ent, st)
                         state_str = st.get("state", "off")
-                        attrs = st.get("attributes", {})
-                        b = attrs.get("brightness")
-                        c = attrs.get("color_temp_kelvin") or attrs.get("color_temp")
-                        pct_b = round((b / 255.0) * 100, 1) if (state_str == "on" and b is not None) else 0
-                        self.db.record_light_state(ent, pct_b, c, state_str)
+                        cached = self.light_states.get(ent, {})
+                        has_b = cached.get("has_brightness", True)
+                        has_ct = cached.get("has_color_temp", True)
+                        b = cached.get("brightness", 0.0)
+                        c = cached.get("color_temp") if has_ct else None
+                        self.db.record_light_state(ent, b, c, state_str)
                 self.db.cleanup_old_data(max_days=30)
             except Exception as e:
                 logger.debug(f"性能采集异常: {e}")
@@ -645,14 +715,14 @@ class GoodLightService:
                 continue
 
             if idx < target_count:
+                params = self.get_light_params(ent, pred["brightness"], pred["color_temp"])
                 self.ignore_updates.add(ent)
-                io_tasks.append(self.client.call_service("light", "turn_on", {
-                    "entity_id": ent,
-                    "brightness": b_val,
-                    "color_temp_kelvin": k_val,
-                    "transition": 1
-                }))
-                self.db.record_light_state(ent, pred["brightness"], k_val, "on")
+                svc_data = dict(params["service_data"])
+                svc_data["transition"] = 1
+                io_tasks.append(self.client.call_service("light", "turn_on", svc_data))
+                rec_b = params["clamped_brightness_pct"] if params["has_brightness"] else 100.0
+                rec_k = params["clamped_kelvin"] if params["has_color_temp"] else None
+                self.db.record_light_state(ent, rec_b, rec_k, "on")
 
         if io_tasks:
             await asyncio.gather(*io_tasks, return_exceptions=True)
