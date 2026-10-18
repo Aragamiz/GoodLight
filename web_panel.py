@@ -566,6 +566,8 @@ class WebPanel:
         self.app.router.add_post("/api/control/timezone", self.handle_control_timezone)
         self.app.router.add_post("/api/control/time_adjust", self.handle_control_time_adjust)
         self.app.router.add_post("/api/control/time_reset", self.handle_control_time_reset)
+        self._last_cpu_time = 0.0
+        self._last_sample_time = time.time()
 
     def get_process_metrics(self):
         cpu_percent = 0.0
@@ -573,8 +575,11 @@ class WebPanel:
         vms_mb = 0.0
         uptime_str = "--"
 
+        now = time.time()
+        time_delta = max(0.001, now - self._last_sample_time)
+
         try:
-            elapsed = int(time.time() - self.start_time)
+            elapsed = int(now - self.start_time)
             h = elapsed // 3600
             m = (elapsed % 3600) // 60
             s = elapsed % 60
@@ -589,10 +594,20 @@ class WebPanel:
 
             with open("/proc/self/stat", "r") as f:
                 stat_line = f.read().split()
+                # 累加进程的用户态与内核态时钟嘀嗒数
                 utime = float(stat_line[13])
                 stime = float(stat_line[14])
-                total_time = (utime + stime) / 100.0
-                cpu_percent = round((total_time / max(1, elapsed)) * 100, 1)
+                total_cpu_time = (utime + stime) / 100.0  # USER_HZ = 100 on Linux
+
+                # 真实瞬时 CPU 使用率计算：ΔCPU时间 / Δ自然流逝时间 * 100%
+                if self._last_cpu_time > 0:
+                    cpu_delta = max(0.0, total_cpu_time - self._last_cpu_time)
+                    cpu_percent = round((cpu_delta / time_delta) * 100.0, 1)
+                else:
+                    cpu_percent = 0.0
+
+                self._last_cpu_time = total_cpu_time
+                self._last_sample_time = now
         except Exception:
             pass
 

@@ -196,6 +196,7 @@ class GoodLightService:
                 self.schedule_learning(grp, hour_float, actual_b=pct_b)
 
     async def handle_light_turned_on(self, grp: LightGroup, triggered_entity: str, dt: datetime, hour_float: float):
+        t0 = time.perf_counter()
         elevation = self.solar.get_solar_elevation(dt)
         term_name, term_prog = self.solar.get_solar_term(dt)
         season_factor = self.solar.get_season_factor(dt)
@@ -205,25 +206,34 @@ class GoodLightService:
             solar_elevation=elevation,
             season_factor=season_factor
         )
-
-        log_msg = f"[{grp.name}] 节气: {term_name} | 太阳高度: {elevation:.1f}° -> 预测亮度: {pred['brightness']}% | 色温: {pred['color_temp']}K | 协同灯数: {pred['light_count']}"
-        logger.info(log_msg)
-        add_log(log_msg)
+        t_model_ms = (time.perf_counter() - t0) * 1000.0
 
         b_val = max(1, min(255, round((pred["brightness"] / 100.0) * 255)))
         k_val = pred["color_temp"]
-
         target_count = pred["light_count"]
+
+        # 并发或者按需下发指令，测量网络 I/O 耗时
+        t_io_start = time.perf_counter()
+        io_tasks = []
         for idx, ent in enumerate(grp.light_entities):
             if idx < target_count:
                 self.ignore_updates.add(ent)
-                await self.client.call_service("light", "turn_on", {
+                io_tasks.append(self.client.call_service("light", "turn_on", {
                     "entity_id": ent,
                     "brightness": b_val,
                     "color_temp_kelvin": k_val,
                     "transition": 1
-                })
+                }))
                 self.db.record_light_state(ent, pred["brightness"], k_val, "on")
+
+        if io_tasks:
+            await asyncio.gather(*io_tasks, return_exceptions=True)
+        t_io_ms = (time.perf_counter() - t_io_start) * 1000.0
+        total_ms = (time.perf_counter() - t0) * 1000.0
+
+        log_msg = f"[{grp.name}] 开灯响应 -> 模型纯推算耗时: {t_model_ms:.3f}ms | 网络下发耗时: {t_io_ms:.1f}ms | 总响应: {total_ms:.1f}ms (推荐: {pred['brightness']}% / {pred['color_temp']}K / {target_count}盏)"
+        logger.info(log_msg)
+        add_log(log_msg)
 
     def schedule_learning(self, grp: LightGroup, hour_float: float, actual_b: float = None, actual_c: int = None, actual_count: int = None):
         debounce_sec = self.cfg.get("learning", {}).get("debounce_seconds", 3.0)
