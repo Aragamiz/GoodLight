@@ -1,11 +1,10 @@
 """
-GoodLight 轻量 Web 控制面板服务 (基于 aiohttp.web)
-提供：
-- 实时天体状态 (太阳高度角、二十四节气进度、季节因子)
-- 进程与系统状态 (CPU 占用率、内存 RSS/虚拟内存、运行时间、线程数)
-- 24小时偏好曲线可视化 (当前亮度、色温、开灯数量)
-- 实时运行日志查看器 (带自动滚动刷新)
-- 选项信息查看 (配置与灯具组列表)
+GoodLight 现代可视化 Web Dashboard 控制面板
+具备：
+- 每一个灯的独立亮度/色温历史曲线图 (Chart.js 支持)
+- 系统 CPU 与内存时序性能曲线图
+- 支持 1小时 / 24小时 / 7天 / 30天 范围无刷新自由切换
+- 实时运行日志与天体节律状态
 """
 
 import os
@@ -15,7 +14,6 @@ import collections
 from datetime import datetime
 from aiohttp import web
 
-# 内存日志环形缓冲区 (保留最近 200 条日志)
 LOG_BUFFER = collections.deque(maxlen=200)
 
 def add_log(msg: str):
@@ -28,16 +26,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GoodLight Dashboard</title>
+  <!-- 引入极轻量 Chart.js (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root {
-      --bg: #0f172a;
-      --card-bg: #1e293b;
-      --border: #334155;
+      --bg: #0b1329;
+      --card-bg: #152238;
+      --border: #233554;
       --text: #f8fafc;
-      --subtext: #94a3b8;
+      --subtext: #8892b0;
       --primary: #38bdf8;
       --accent: #fbbf24;
       --success: #4ade80;
+      --rose: #fb7185;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -50,7 +51,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
       padding-bottom: 16px;
       border-bottom: 1px solid var(--border);
     }
@@ -65,33 +66,66 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
       gap: 16px;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
     .card {
       background: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 18px;
+      margin-bottom: 20px;
     }
     .card-title {
       font-size: 14px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       color: var(--subtext);
-      margin-bottom: 12px;
+      margin-bottom: 14px;
       display: flex;
       justify-content: space-between;
+      align-items: center;
     }
-    .stat-val { font-size: 26px; font-weight: 700; color: var(--text); }
+    .stat-val { font-size: 24px; font-weight: 700; color: var(--text); }
     .stat-sub { font-size: 13px; color: var(--subtext); margin-top: 4px; }
+    
+    /* 时间范围切换器按钮组 */
+    .range-selector {
+      display: flex;
+      gap: 6px;
+      background: #090e1a;
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .range-btn {
+      background: transparent;
+      border: none;
+      color: var(--subtext);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .range-btn.active {
+      background: var(--primary);
+      color: #0b1329;
+      font-weight: 700;
+    }
+    .chart-box {
+      position: relative;
+      width: 100%;
+      height: 240px;
+    }
     .log-box {
-      background: #090d16;
+      background: #070c18;
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 14px;
-      height: 260px;
+      padding: 12px;
+      height: 200px;
       overflow-y: auto;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 12px;
@@ -102,7 +136,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
-      margin-top: 8px;
     }
     .curve-table th, .curve-table td {
       padding: 6px 10px;
@@ -131,9 +164,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="stat-sub" id="predict-count">建议开灯数: -- 盏</div>
     </div>
     <div class="card">
-      <div class="card-title">进程性能占用 <span>⚡</span></div>
+      <div class="card-title">实时系统性能 <span>⚡</span></div>
       <div class="stat-val" id="proc-cpu">CPU: --%</div>
-      <div class="stat-sub" id="proc-mem">内存: -- MB | 运行时间: --</div>
+      <div class="stat-sub" id="proc-mem">内存: -- MB | 运行: --</div>
     </div>
     <div class="card">
       <div class="card-title">受控协同灯具 <span>🎛️</span></div>
@@ -142,14 +175,35 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
   </div>
 
-  <div class="card" style="margin-bottom: 24px;">
+  <!-- 1. 性能历史时序曲线图 -->
+  <div class="card">
+    <div class="card-title">
+      <span>系统性能时序曲线 (CPU % & 内存占用)</span>
+      <div class="range-selector">
+        <button class="range-btn active" onclick="changePerfRange(1, this)">1小时</button>
+        <button class="range-btn" onclick="changePerfRange(24, this)">24小时</button>
+        <button class="range-btn" onclick="changePerfRange(168, this)">7天</button>
+        <button class="range-btn" onclick="changePerfRange(720, this)">30天</button>
+      </div>
+    </div>
+    <div class="chart-box">
+      <canvas id="perfChart"></canvas>
+    </div>
+  </div>
+
+  <!-- 2. 每一个灯的独立亮度与色温曲线容器 -->
+  <div id="lights-charts-container"></div>
+
+  <!-- 3. 运行日志 -->
+  <div class="card">
     <div class="card-title">实时运行与学习日志 <span>📋</span></div>
     <div class="log-box" id="log-box"></div>
   </div>
 
+  <!-- 4. 24小时自适应基准表 -->
   <div class="card">
-    <div class="card-title">24小时自适应偏好曲线 (已驯化模型) <span>📈</span></div>
-    <div style="max-height: 220px; overflow-y: auto;">
+    <div class="card-title">24小时自然基准曲线 (已驯化模型) <span>📈</span></div>
+    <div style="max-height: 200px; overflow-y: auto;">
       <table class="curve-table">
         <thead>
           <tr>
@@ -166,13 +220,188 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 
   <script>
+    let currentPerfHours = 1;
+    let currentLightHours = 24;
+    let perfChart = null;
+    let lightCharts = {}; // { entity_id: ChartInstance }
+
+    // 初始化性能曲线
+    function initPerfChart() {
+      const ctx = document.getElementById('perfChart').getContext('2d');
+      perfChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'CPU 占用率 (%)',
+              data: [],
+              borderColor: '#38bdf8',
+              backgroundColor: 'rgba(56, 189, 248, 0.1)',
+              tension: 0.3,
+              yAxisID: 'y'
+            },
+            {
+              label: '物理内存 (MB)',
+              data: [],
+              borderColor: '#fbbf24',
+              backgroundColor: 'rgba(251, 191, 36, 0.1)',
+              tension: 0.3,
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: { grid: { color: '#1e293b' }, ticks: { color: '#8892b0' } },
+            y: {
+              type: 'linear', display: true, position: 'left',
+              title: { display: true, text: 'CPU (%)', color: '#38bdf8' },
+              grid: { color: '#1e293b' }, ticks: { color: '#8892b0' }
+            },
+            y1: {
+              type: 'linear', display: true, position: 'right',
+              title: { display: true, text: '内存 (MB)', color: '#fbbf24' },
+              grid: { drawOnChartArea: false }, ticks: { color: '#8892b0' }
+            }
+          },
+          plugins: {
+            legend: { labels: { color: '#f8fafc' } }
+          }
+        }
+      });
+    }
+
+    async function changePerfRange(hours, btn) {
+      currentPerfHours = hours;
+      document.querySelectorAll('.range-selector button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      await updatePerfData();
+    }
+
+    async function changeLightRange(hours, btn) {
+      currentLightHours = hours;
+      document.querySelectorAll('.light-range-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      await updateLightData();
+    }
+
+    async function updatePerfData() {
+      try {
+        const resp = await fetch(`/api/history/perf?hours=${currentPerfHours}`);
+        const data = await resp.json();
+        if (perfChart) {
+          perfChart.data.labels = data.labels;
+          perfChart.data.datasets[0].data = data.cpu;
+          perfChart.data.datasets[1].data = data.memory;
+          perfChart.update();
+        }
+      } catch (e) {
+        console.error("更新性能数据失败:", e);
+      }
+    }
+
+    async function updateLightData() {
+      try {
+        const resp = await fetch(`/api/history/lights?hours=${currentLightHours}`);
+        const data = await resp.json();
+        const container = document.getElementById('lights-charts-container');
+
+        for (const [entityId, hData] of Object.entries(data)) {
+          let safeId = entityId.replace(/[^a-zA-Z0-9_]/g, '_');
+          let card = document.getElementById(`card-${safeId}`);
+
+          if (!card) {
+            // 动态创建该灯的图表卡片
+            card = document.createElement('div');
+            card.className = 'card';
+            card.id = `card-${safeId}`;
+            card.innerHTML = `
+              <div class="card-title">
+                <span>💡 灯具曲线: ${entityId} (亮度 & 色温)</span>
+                <div class="range-selector">
+                  <button class="range-btn light-range-btn ${currentLightHours==1?'active':''}" onclick="changeLightRange(1, this)">1小时</button>
+                  <button class="range-btn light-range-btn ${currentLightHours==24?'active':''}" onclick="changeLightRange(24, this)">24小时</button>
+                  <button class="range-btn light-range-btn ${currentLightHours==168?'active':''}" onclick="changeLightRange(168, this)">7天</button>
+                  <button class="range-btn light-range-btn ${currentLightHours==720?'active':''}" onclick="changeLightRange(720, this)">30天</button>
+                </div>
+              </div>
+              <div class="chart-box">
+                <canvas id="canvas-${safeId}"></canvas>
+              </div>
+            `;
+            container.appendChild(card);
+
+            const ctx = document.getElementById(`canvas-${safeId}`).getContext('2d');
+            lightCharts[entityId] = new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: hData.labels,
+                datasets: [
+                  {
+                    label: '亮度 (%)',
+                    data: hData.brightness,
+                    borderColor: '#4ade80',
+                    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                    tension: 0.3,
+                    yAxisID: 'y'
+                  },
+                  {
+                    label: '色温 (K)',
+                    data: hData.color_temp,
+                    borderColor: '#fb7185',
+                    backgroundColor: 'rgba(251, 113, 133, 0.1)',
+                    tension: 0.3,
+                    yAxisID: 'y1'
+                  }
+                ]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                  x: { grid: { color: '#1e293b' }, ticks: { color: '#8892b0' } },
+                  y: {
+                    type: 'linear', display: true, position: 'left',
+                    min: 0, max: 100,
+                    title: { display: true, text: '亮度 (%)', color: '#4ade80' },
+                    grid: { color: '#1e293b' }, ticks: { color: '#8892b0' }
+                  },
+                  y1: {
+                    type: 'linear', display: true, position: 'right',
+                    title: { display: true, text: '色温 (K)', color: '#fb7185' },
+                    grid: { drawOnChartArea: false }, ticks: { color: '#8892b0' }
+                  }
+                },
+                plugins: { legend: { labels: { color: '#f8fafc' } } }
+              }
+            });
+          } else {
+            const chart = lightCharts[entityId];
+            if (chart) {
+              chart.data.labels = hData.labels;
+              chart.data.datasets[0].data = hData.brightness;
+              chart.data.datasets[1].data = hData.color_temp;
+              chart.update();
+            }
+          }
+        }
+      } catch (e) {
+        console.error("更新灯具历史数据失败:", e);
+      }
+    }
+
     async function updateDashboard() {
       try {
         const resp = await fetch('/api/status');
         const data = await resp.json();
 
         document.getElementById('solar-term').innerText = `${data.solar.term} (进度: ${(data.solar.term_progress * 100).toFixed(0)}%)`;
-        document.getElementById('solar-elevation').innerText = `太阳真实高度角: ${data.solar.elevation.toFixed(1)}° | 季节因子: ${data.solar.season_factor.toFixed(2)}`;
+        document.getElementById('solar-elevation').innerText = `太阳高度角: ${data.solar.elevation.toFixed(1)}° | 季节因子: ${data.solar.season_factor.toFixed(2)}`;
 
         document.getElementById('predict-target').innerText = `${data.prediction.brightness}% / ${data.prediction.color_temp}K`;
         document.getElementById('predict-count').innerText = `建议开启灯具: ${data.prediction.light_count} 盏`;
@@ -208,8 +437,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         console.error("更新数据失败:", e);
       }
     }
-    updateDashboard();
-    setInterval(updateDashboard, 3000);
+
+    window.onload = async () => {
+      initPerfChart();
+      await updateDashboard();
+      await updatePerfData();
+      await updateLightData();
+      setInterval(updateDashboard, 3000);
+      setInterval(updatePerfData, 10000);
+      setInterval(updateLightData, 15000);
+    };
   </script>
 </body>
 </html>
@@ -224,23 +461,22 @@ class WebPanel:
         self.app = web.Application()
         self.app.router.add_get("/", self.handle_index)
         self.app.router.add_get("/api/status", self.handle_api_status)
+        self.app.router.add_get("/api/history/perf", self.handle_api_history_perf)
+        self.app.router.add_get("/api/history/lights", self.handle_api_history_lights)
 
     def get_process_metrics(self):
-        """读取 /proc 纯标准 Linux 统计 (零第三方依赖)"""
         cpu_percent = 0.0
         rss_mb = 0.0
         vms_mb = 0.0
         uptime_str = "--"
 
         try:
-            # 运行时间
             elapsed = int(time.time() - self.start_time)
             h = elapsed // 3600
             m = (elapsed % 3600) // 60
             s = elapsed % 60
             uptime_str = f"{h}h {m}m {s}s"
 
-            # 内存 (/proc/self/statm)
             with open("/proc/self/statm", "r") as f:
                 parts = f.read().split()
                 if len(parts) >= 2:
@@ -248,10 +484,8 @@ class WebPanel:
                     vms_mb = round((int(parts[0]) * page_size) / (1024 * 1024), 1)
                     rss_mb = round((int(parts[1]) * page_size) / (1024 * 1024), 1)
 
-            # CPU / 线程数 (/proc/self/stat)
             with open("/proc/self/stat", "r") as f:
                 stat_line = f.read().split()
-                # 简易 CPU 时间计算
                 utime = float(stat_line[13])
                 stime = float(stat_line[14])
                 total_time = (utime + stime) / 100.0
@@ -297,6 +531,16 @@ class WebPanel:
             "profile": self.service.model.anchors,
             "logs": list(LOG_BUFFER)
         }
+        return web.json_response(data)
+
+    async def handle_api_history_perf(self, request):
+        hours = float(request.query.get("hours", 24))
+        data = self.service.db.query_metrics(hours=hours)
+        return web.json_response(data)
+
+    async def handle_api_history_lights(self, request):
+        hours = float(request.query.get("hours", 24))
+        data = self.service.db.query_light_history(hours=hours)
         return web.json_response(data)
 
     async def start(self):

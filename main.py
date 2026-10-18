@@ -15,6 +15,7 @@ from solar import SolarCalculator
 from model import GoodLightModel
 from ha_client import HAClient
 from web_panel import WebPanel, add_log
+from db import HistoryDB
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("GoodLight.Core")
@@ -43,6 +44,7 @@ class GoodLightService:
         )
         self.model = GoodLightModel(profile_path="light_profile.json")
         self.client = HAClient(base_url=ha_url, token=ha_token)
+        self.db = HistoryDB(db_path="history.db")
 
         self.light_entities = [item["entity_id"] for item in self.cfg["lighting_group"]["lights"]]
         self.debounce_tasks = {}
@@ -57,8 +59,54 @@ class GoodLightService:
         # 启动 Web 监控面板
         await self.web_panel.start()
 
+        # 启动后台性能统计与灯光快照采样循环 (每 30 秒采集一次并入库)
+        asyncio.create_task(self._metrics_sampler_loop())
+
         self.client.register_event_listener(self.on_state_changed)
+        # 连接并在就绪后主动拉取当前灯光初始状态
+        asyncio.create_task(self._init_light_states())
         await self.client.connect()
+
+    async def _init_light_states(self):
+        await asyncio.sleep(2)
+        for ent in self.light_entities:
+            try:
+                st = await self.client.get_state(ent)
+                if st:
+                    state_str = st.get("state", "off")
+                    attrs = st.get("attributes", {})
+                    b = attrs.get("brightness")
+                    c = attrs.get("color_temp_kelvin") or attrs.get("color_temp")
+                    pct_b = round((b / 255.0) * 100, 1) if b is not None else 0
+                    self.db.record_light_state(ent, pct_b, c, state_str)
+                    logger.debug(f"初始同步灯光状态: {ent} -> {state_str}, {pct_b}%, {c}K")
+            except Exception as e:
+                logger.debug(f"初始同步灯光状态失败 {ent}: {e}")
+
+    async def _metrics_sampler_loop(self):
+        while True:
+            try:
+                stats = self.web_panel.get_process_metrics()
+                self.db.record_metrics(
+                    cpu=stats["cpu_percent"],
+                    rss_mb=stats["mem_rss_mb"],
+                    vms_mb=stats["mem_vms_mb"]
+                )
+                # 周期性为每个灯打点快照
+                for ent in self.light_entities:
+                    st = await self.client.get_state(ent)
+                    if st:
+                        state_str = st.get("state", "off")
+                        attrs = st.get("attributes", {})
+                        b = attrs.get("brightness")
+                        c = attrs.get("color_temp_kelvin") or attrs.get("color_temp")
+                        pct_b = round((b / 255.0) * 100, 1) if (state_str == "on" and b is not None) else 0
+                        self.db.record_light_state(ent, pct_b, c, state_str)
+                # 每日一次清理过期数据
+                self.db.cleanup_old_data(max_days=30)
+            except Exception as e:
+                logger.debug(f"性能采集异常: {e}")
+            await asyncio.sleep(30)
 
     async def on_state_changed(self, event_data: dict):
         entity_id = event_data.get("entity_id")
@@ -93,13 +141,15 @@ class GoodLightService:
             old_b = old_attrs.get("brightness")
             new_b = new_attrs.get("brightness")
 
-            old_c = new_attrs.get("color_temp_kelvin") or new_attrs.get("color_temp")
             new_c = new_attrs.get("color_temp_kelvin") or new_attrs.get("color_temp")
+
+            # 存入历史数据库
+            pct_b = round((new_b / 255.0) * 100, 1) if new_b is not None else 0
+            self.db.record_light_state(entity_id, pct_b, new_c, new_s)
 
             # 判定是否有明显手动调光动作
             b_changed = (old_b is not None and new_b is not None and abs(old_b - new_b) >= 3)
             if b_changed:
-                pct_b = round((new_b / 255.0) * 100, 1)
                 self.schedule_learning(hour_float, actual_b=pct_b)
 
     async def handle_light_turned_on(self, triggered_entity: str, dt: datetime, hour_float: float):
@@ -132,6 +182,8 @@ class GoodLightService:
                     "color_temp_kelvin": k_val,
                     "transition": 1
                 })
+                # 记录开灯历史点
+                self.db.record_light_state(ent, pred["brightness"], k_val, "on")
             else:
                 pass
 

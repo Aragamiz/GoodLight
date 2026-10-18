@@ -73,8 +73,13 @@ class HAClient:
     def register_event_listener(self, callback: Callable):
         self._callbacks.append(callback)
 
+    async def ensure_session(self):
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+
     async def call_service(self, domain: str, service: str, service_data: Dict[str, Any]):
         """调用 HA 服务 (REST 或 WS)"""
+        await self.ensure_session()
         url = f"{self.base_url}/api/services/{domain}/{service}"
         headers = {
             "Authorization": f"Bearer {self.token}",
@@ -92,6 +97,7 @@ class HAClient:
 
     async def get_state(self, entity_id: str) -> Dict[str, Any]:
         """获取单个实体的实时状态"""
+        await self.ensure_session()
         url = f"{self.base_url}/api/states/{entity_id}"
         headers = {"Authorization": f"Bearer {self.token}"}
         try:
