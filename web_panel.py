@@ -1,10 +1,5 @@
 """
-GoodLight 现代可视化 Web Dashboard 控制面板
-具备：
-- 每一个灯的独立亮度/色温历史曲线图 (Chart.js 支持)
-- 系统 CPU 与内存时序性能曲线图
-- 支持 1小时 / 24小时 / 7天 / 30天 范围无刷新自由切换
-- 实时运行日志与天体节律状态
+GoodLight 现代可视化 Web Dashboard 控制面板 (带时区调整、时间微调与多分组控制)
 """
 
 import os
@@ -26,7 +21,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GoodLight Dashboard</title>
-  <!-- 引入极轻量 Chart.js (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -90,7 +84,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .stat-val { font-size: 24px; font-weight: 700; color: var(--text); }
     .stat-sub { font-size: 13px; color: var(--subtext); margin-top: 4px; }
     
-    /* 时间范围切换器按钮组 */
     .range-selector {
       display: flex;
       gap: 6px;
@@ -115,6 +108,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: #0b1329;
       font-weight: 700;
     }
+    .btn-action {
+      background: #1e293b;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .btn-action:hover {
+      background: var(--primary);
+      color: #0b1329;
+    }
     .chart-box {
       position: relative;
       width: 100%;
@@ -125,7 +132,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 12px;
-      height: 200px;
+      height: 180px;
       overflow-y: auto;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 12px;
@@ -144,12 +151,50 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     .curve-table th { color: var(--subtext); font-weight: 500; }
     .highlight-row { background: rgba(56, 189, 248, 0.12); color: var(--primary); font-weight: 600; }
+    select {
+      background: #090e1a;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="title">🌟 GoodLight 控制面板</div>
-    <div class="badge" id="status-badge">● 正在运行</div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <div id="sim-time-badge" style="font-size: 13px; color: var(--accent);">时间: --:--:--</div>
+      <div class="badge" id="status-badge">● 正在运行</div>
+    </div>
+  </div>
+
+  <!-- 时间与时区控制条 -->
+  <div class="card" style="padding: 14px 18px; margin-bottom: 16px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 13px; color: var(--subtext);">🌐 时区选择:</span>
+        <select id="tz-select" onchange="onTimezoneChange(this.value)">
+          <option value="8.0">UTC+8 (北京 / 上海 / 香港 / 台北)</option>
+          <option value="9.0">UTC+9 (东京 / 首尔)</option>
+          <option value="0.0">UTC+0 (伦敦 / GMT)</option>
+          <option value="1.0">UTC+1 (巴黎 / 柏林)</option>
+          <option value="-5.0">UTC-5 (纽约 / 美东)</option>
+          <option value="-8.0">UTC-8 (旧金山 / 洛杉矶 / 太平洋)</option>
+        </select>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 13px; color: var(--subtext);">⏳ 时间微调测试:</span>
+        <button class="btn-action" onclick="adjustTime(-60)">-1小时</button>
+        <button class="btn-action" onclick="adjustTime(-15)">-15分</button>
+        <button class="btn-action" onclick="adjustTime(15)">+15分</button>
+        <button class="btn-action" onclick="adjustTime(60)">+1小时</button>
+        <button class="btn-action" style="border-color: var(--accent); color: var(--accent);" onclick="resetTime()">重置当前时间</button>
+      </div>
+    </div>
   </div>
 
   <div class="grid">
@@ -159,23 +204,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="stat-sub" id="solar-elevation">太阳高度角: --°</div>
     </div>
     <div class="card">
-      <div class="card-title">当前目标预测 <span>💡</span></div>
-      <div class="stat-val" id="predict-target">--% / --K</div>
+      <div class="card-title">分组选择与预测 <span>💡</span></div>
+      <div style="margin-bottom: 8px;">
+        <select id="group-select" onchange="onGroupChange(this.value)"></select>
+      </div>
+      <div class="stat-val" id="predict-target" style="font-size: 20px;">--% / --K</div>
       <div class="stat-sub" id="predict-count">建议开灯数: -- 盏</div>
     </div>
     <div class="card">
-      <div class="card-title">实时系统性能 <span>⚡</span></div>
+      <div class="card-title">系统性能占用 <span>⚡</span></div>
       <div class="stat-val" id="proc-cpu">CPU: --%</div>
       <div class="stat-sub" id="proc-mem">内存: -- MB | 运行: --</div>
     </div>
     <div class="card">
-      <div class="card-title">受控协同灯具 <span>🎛️</span></div>
-      <div class="stat-val" style="font-size: 16px;" id="light-group-name">--</div>
-      <div class="stat-sub" id="light-entities">--</div>
+      <div class="card-title">当前分组灯具 <span>🎛️</span></div>
+      <div class="stat-val" style="font-size: 16px;" id="current-group-name">--</div>
+      <div class="stat-sub" id="current-group-lights">--</div>
     </div>
   </div>
 
-  <!-- 1. 性能历史时序曲线图 -->
+  <!-- 性能时序曲线图 -->
   <div class="card">
     <div class="card-title">
       <span>系统性能时序曲线 (CPU % & 内存占用)</span>
@@ -191,18 +239,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
   </div>
 
-  <!-- 2. 每一个灯的独立亮度与色温曲线容器 -->
+  <!-- 每一个灯的独立曲线图容器 -->
   <div id="lights-charts-container"></div>
 
-  <!-- 3. 运行日志 -->
+  <!-- 运行日志 -->
   <div class="card">
     <div class="card-title">实时运行与学习日志 <span>📋</span></div>
     <div class="log-box" id="log-box"></div>
   </div>
 
-  <!-- 4. 24小时自适应基准表 -->
+  <!-- 24小时自适应偏好曲线表 -->
   <div class="card">
-    <div class="card-title">24小时自然基准曲线 (已驯化模型) <span>📈</span></div>
+    <div class="card-title"><span id="table-title">当前分组 24小时自适应曲线</span> <span>📈</span></div>
     <div style="max-height: 200px; overflow-y: auto;">
       <table class="curve-table">
         <thead>
@@ -223,9 +271,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let currentPerfHours = 1;
     let currentLightHours = 24;
     let perfChart = null;
-    let lightCharts = {}; // { entity_id: ChartInstance }
+    let lightCharts = {};
+    let selectedGroupId = null;
+    let groupsData = {};
 
-    // 初始化性能曲线
     function initPerfChart() {
       const ctx = document.getElementById('perfChart').getContext('2d');
       perfChart = new Chart(ctx, {
@@ -268,9 +317,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               grid: { drawOnChartArea: false }, ticks: { color: '#8892b0' }
             }
           },
-          plugins: {
-            legend: { labels: { color: '#f8fafc' } }
-          }
+          plugins: { legend: { labels: { color: '#f8fafc' } } }
         }
       });
     }
@@ -287,6 +334,34 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       document.querySelectorAll('.light-range-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       await updateLightData();
+    }
+
+    async function onTimezoneChange(val) {
+      await fetch('/api/control/timezone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone_offset: parseFloat(val) })
+      });
+      await updateDashboard();
+    }
+
+    async function adjustTime(minutes) {
+      await fetch('/api/control/time_adjust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delta_minutes: minutes })
+      });
+      await updateDashboard();
+    }
+
+    async function resetTime() {
+      await fetch('/api/control/time_reset', { method: 'POST' });
+      await updateDashboard();
+    }
+
+    function onGroupChange(gid) {
+      selectedGroupId = gid;
+      renderCurrentGroup();
     }
 
     async function updatePerfData() {
@@ -315,7 +390,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           let card = document.getElementById(`card-${safeId}`);
 
           if (!card) {
-            // 动态创建该灯的图表卡片
             card = document.createElement('div');
             card.className = 'card';
             card.id = `card-${safeId}`;
@@ -395,44 +469,70 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
 
+    function renderCurrentGroup() {
+      if (!selectedGroupId || !groupsData[selectedGroupId]) return;
+      const g = groupsData[selectedGroupId];
+
+      document.getElementById('current-group-name').innerText = g.name;
+      document.getElementById('current-group-lights').innerText = g.lights.join(', ');
+      document.getElementById('predict-target').innerText = `${g.prediction.brightness}% / ${g.prediction.color_temp}K`;
+      document.getElementById('predict-count').innerText = `建议开启灯具: ${g.prediction.light_count} 盏`;
+      document.getElementById('table-title').innerText = `[${g.name}] 24小时自适应曲线`;
+
+      const currentHour = new Date().getHours();
+      const tbody = document.getElementById('curve-tbody');
+      tbody.innerHTML = '';
+      for (let h = 0; h < 24; h++) {
+        const item = g.profile[h.toString()] || {};
+        const isCurrent = (h === currentHour);
+        const tr = document.createElement('tr');
+        if (isCurrent) tr.className = 'highlight-row';
+        tr.innerHTML = `
+          <td>${h.toString().padStart(2, '0')}:00 ${isCurrent ? '👈 (当前)' : ''}</td>
+          <td>${item.brightness || '--'}%</td>
+          <td>${item.color_temp || '--'}K</td>
+          <td>${item.light_count || 1} 盏</td>
+          <td>${item.samples_count || 0} 次</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
     async function updateDashboard() {
       try {
         const resp = await fetch('/api/status');
         const data = await resp.json();
 
+        document.getElementById('sim-time-badge').innerText = `当前系统时间: ${data.time.current_time} (UTC${data.time.timezone_offset>=0?'+':''}${data.time.timezone_offset})`;
+        document.getElementById('tz-select').value = data.time.timezone_offset.toFixed(1);
+
         document.getElementById('solar-term').innerText = `${data.solar.term} (进度: ${(data.solar.term_progress * 100).toFixed(0)}%)`;
         document.getElementById('solar-elevation').innerText = `太阳高度角: ${data.solar.elevation.toFixed(1)}° | 季节因子: ${data.solar.season_factor.toFixed(2)}`;
-
-        document.getElementById('predict-target').innerText = `${data.prediction.brightness}% / ${data.prediction.color_temp}K`;
-        document.getElementById('predict-count').innerText = `建议开启灯具: ${data.prediction.light_count} 盏`;
 
         document.getElementById('proc-cpu').innerText = `CPU: ${data.process.cpu_percent}%`;
         document.getElementById('proc-mem').innerText = `物理内存: ${data.process.mem_rss_mb} MB | 虚拟内存: ${data.process.mem_vms_mb} MB | 运行: ${data.process.uptime}`;
 
-        document.getElementById('light-group-name').innerText = data.config.group_name;
-        document.getElementById('light-entities').innerText = data.config.lights.join(', ');
+        // 分组下拉框更新
+        groupsData = data.groups;
+        const gSelect = document.getElementById('group-select');
+        const existingKeys = Object.keys(groupsData);
+        if (existingKeys.length > 0 && !selectedGroupId) {
+          selectedGroupId = existingKeys[0];
+        }
+        gSelect.innerHTML = '';
+        for (const [gid, ginfo] of Object.entries(groupsData)) {
+          const opt = document.createElement('option');
+          opt.value = gid;
+          opt.innerText = `${ginfo.name} (${ginfo.lights.length} 盏灯)`;
+          if (gid === selectedGroupId) opt.selected = true;
+          gSelect.appendChild(opt);
+        }
+
+        renderCurrentGroup();
 
         const logBox = document.getElementById('log-box');
         logBox.innerHTML = data.logs.join('<br>');
         logBox.scrollTop = logBox.scrollHeight;
-
-        const currentHour = new Date().getHours();
-        const tbody = document.getElementById('curve-tbody');
-        tbody.innerHTML = '';
-        for (let h = 0; h < 24; h++) {
-          const item = data.profile[h.toString()] || {};
-          const isCurrent = (h === currentHour);
-          const tr = document.createElement('tr');
-          if (isCurrent) tr.className = 'highlight-row';
-          tr.innerHTML = `
-            <td>${h.toString().padStart(2, '0')}:00 ${isCurrent ? '👈 (当前)' : ''}</td>
-            <td>${item.brightness || '--'}%</td>
-            <td>${item.color_temp || '--'}K</td>
-            <td>${item.light_count || 1} 盏</td>
-            <td>${item.samples_count || 0} 次</td>
-          `;
-          tbody.appendChild(tr);
-        }
       } catch (e) {
         console.error("更新数据失败:", e);
       }
@@ -463,6 +563,9 @@ class WebPanel:
         self.app.router.add_get("/api/status", self.handle_api_status)
         self.app.router.add_get("/api/history/perf", self.handle_api_history_perf)
         self.app.router.add_get("/api/history/lights", self.handle_api_history_lights)
+        self.app.router.add_post("/api/control/timezone", self.handle_control_timezone)
+        self.app.router.add_post("/api/control/time_adjust", self.handle_control_time_adjust)
+        self.app.router.add_post("/api/control/time_reset", self.handle_control_time_reset)
 
     def get_process_metrics(self):
         cpu_percent = 0.0
@@ -504,34 +607,60 @@ class WebPanel:
         return web.Response(text=HTML_TEMPLATE, content_type="text/html")
 
     async def handle_api_status(self, request):
-        now = datetime.now(self.service.tz)
+        now = self.service.get_current_time()
         h_float = now.hour + now.minute / 60.0 + now.second / 3600.0
 
         elev = self.service.solar.get_solar_elevation(now)
         term, term_prog = self.service.solar.get_solar_term(now)
         season = self.service.solar.get_season_factor(now)
 
-        pred = self.service.model.predict(h_float, elev, season)
         proc_stats = self.get_process_metrics()
 
+        groups_dict = {}
+        for gid, grp in self.service.groups.items():
+            pred = grp.model.predict(h_float, elev, season)
+            groups_dict[gid] = {
+                "id": grp.id,
+                "name": grp.name,
+                "enabled": grp.enabled,
+                "lights": grp.light_entities,
+                "prediction": pred,
+                "profile": grp.model.anchors
+            }
+
         data = {
+            "time": {
+                "current_time": now.strftime("%Y-%m-%d %H:%M:%S"),
+                "timezone_offset": self.service.tz_offset,
+                "time_offset_seconds": self.service.time_offset_seconds
+            },
             "solar": {
                 "term": term,
                 "term_progress": round(term_prog, 2),
                 "elevation": round(elev, 2),
                 "season_factor": round(season, 2)
             },
-            "prediction": pred,
             "process": proc_stats,
-            "config": {
-                "group_name": self.service.cfg.get("lighting_group", {}).get("name", "GoodLight Group"),
-                "lights": self.service.light_entities,
-                "learning_rate": self.service.cfg.get("learning", {}).get("learning_rate", 0.25)
-            },
-            "profile": self.service.model.anchors,
+            "groups": groups_dict,
             "logs": list(LOG_BUFFER)
         }
         return web.json_response(data)
+
+    async def handle_control_timezone(self, request):
+        req_data = await request.json()
+        offset = float(req_data.get("timezone_offset", 8.0))
+        self.service.update_timezone(offset)
+        return web.json_response({"ok": True, "offset": offset})
+
+    async def handle_control_time_adjust(self, request):
+        req_data = await request.json()
+        delta = int(req_data.get("delta_minutes", 0))
+        self.service.update_time_offset(delta)
+        return web.json_response({"ok": True, "delta_minutes": delta})
+
+    async def handle_control_time_reset(self, request):
+        self.service.reset_time_offset()
+        return web.json_response({"ok": True})
 
     async def handle_api_history_perf(self, request):
         hours = float(request.query.get("hours", 24))
