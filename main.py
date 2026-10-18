@@ -14,6 +14,7 @@ import yaml
 from solar import SolarCalculator
 from model import GoodLightModel
 from ha_client import HAClient
+from web_panel import WebPanel, add_log
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("GoodLight.Core")
@@ -46,12 +47,15 @@ class GoodLightService:
         self.light_entities = [item["entity_id"] for item in self.cfg["lighting_group"]["lights"]]
         self.debounce_tasks = {}
         self.ignore_updates = set()  # 防止自身下发指令触发回环学习
+        self.web_panel = WebPanel(self, host="0.0.0.0", port=8787)
 
     async def start(self):
-        logger.info("==================================================")
-        logger.info("   GoodLight (良光) 智能自适应感知服务正在启动...   ")
-        logger.info(f"受控灯具协同组: {self.light_entities}")
-        logger.info("==================================================")
+        msg = f"GoodLight 智能感知服务启动完成，协同组: {self.light_entities}"
+        logger.info(msg)
+        add_log(msg)
+
+        # 启动 Web 监控面板
+        await self.web_panel.start()
 
         self.client.register_event_listener(self.on_state_changed)
         await self.client.connect()
@@ -109,7 +113,9 @@ class GoodLightService:
             season_factor=season_factor
         )
 
-        logger.info(f"[自适应预测] 节气: {term_name} | 太阳高度: {elevation:.1f}° -> 推荐亮度: {pred['brightness']}% | 色温: {pred['color_temp']}K | 推荐开启灯数: {pred['light_count']}")
+        log_msg = f"[自适应开灯] 节气: {term_name} | 太阳高度: {elevation:.1f}° -> 推荐亮度: {pred['brightness']}% | 色温: {pred['color_temp']}K | 协同灯数: {pred['light_count']}"
+        logger.info(log_msg)
+        add_log(log_msg)
 
         # 准备下发指令
         b_val = max(1, min(255, round((pred["brightness"] / 100.0) * 255)))
@@ -127,7 +133,6 @@ class GoodLightService:
                     "transition": 1
                 })
             else:
-                # 若模型判定该时段只需 1 盏灯，其余未被调用的从属灯保持关或关闭
                 pass
 
     def schedule_learning(self, hour_float: float, actual_b: float = None, actual_c: int = None, actual_count: int = None):
@@ -144,6 +149,7 @@ class GoodLightService:
                 actual_count=actual_count,
                 learning_rate=lr
             )
+            add_log(f"[偏好学习] 检测到手动调光并完成局部学习 (当前时刻: {hour_float:.1f}h -> 亮度: {actual_b}%)")
 
         if "learn" in self.debounce_tasks:
             self.debounce_tasks["learn"].cancel()
