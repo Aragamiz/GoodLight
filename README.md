@@ -1,25 +1,56 @@
 # GoodLight 🌟
 
-> **A fully autonomous, self-learning adaptive circadian lighting engine.**  
-> Runs locally on edge devices (Routers, PVE, NAS, or Docker), naturally synchronizing with geographical solar rhythms, the 24 solar terms, and real-time environmental factors to intelligently predict and adaptively adjust **brightness, color temperature, and the number of active lights**.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/home-assistant/brands/master/core_badges/dark/badge.png" width="160" alt="Home Assistant" /><br/>
+  <strong>An autonomous, self-learning adaptive circadian lighting engine seamlessly integrated with Home Assistant (HA).</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-Compatible-41BDF5?style=for-the-badge&logo=home-assistant&logoColor=white" alt="Home Assistant" /></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" /></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.9+" /></a>
+  <a href="https://github.com/Aragamiz/GoodLight/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License: MIT" /></a>
+  <a href="https://github.com/Aragamiz/GoodLight/stargazers"><img src="https://img.shields.io/github/stars/Aragamiz/GoodLight?style=for-the-badge&logo=github&color=gold" alt="GitHub Stars" /></a>
+</p>
 
 ---
 
-## 💡 Core Philosophy
+## 📖 Overview
 
-1. **Zero Aggressive Overrides (Respecting the User)**:
-   - Traditional automation components continuously poll and forcefully reset lights, fighting manual user adjustments.
-   - **GoodLight Principle: Intervene only upon turn-on or ambient shifts**. Once the light is on, the user has full manual control. GoodLight will **never fight back**; instead, it silently learns user adjustments as localized training feedback.
-2. **True Astronomical & Seasonal Harmony**:
-   - **Real Solar Elevation Angle**: Pure mathematical calculation based on local coordinates. Dawn, dusk, golden hour, and twilight are accurately tracked in real time.
-   - **24 Solar Terms & Astronomical Seasons**: Derived from solar ecliptic longitude ($\lambda$), automatically modulating cooler tones in summer and warmer ambiance in winter.
-   - **Environmental Temperature Compensation**: Naturally offsets indoor/outdoor seasonal temperature shifts.
-3. **Multi-Light Synergy & Quantity Learning**:
-   - Manages groups of lights (e.g., ceiling main lights, ambient strips, and desk lamps).
-   - Dynamically determines **how many lights to activate** (e.g., minimal single accent light late at night vs. full multi-light illumination during daytime peak).
-4. **Lightweight Mathematical Engine (Zero Heavy Dependencies)**:
-   - Powered by localized anchor-based cubic Hermite splines with online Gaussian decay weighting (EMA).
-   - Ultra-fast inference (`<0.01 ms`), minuscule memory footprint (`<20 MB`), with state persisted in clean, human-readable JSON files.
+**GoodLight** is a lightweight, edge-native circadian lighting system engineered specifically for **Home Assistant (HA)**. It runs locally on routers (OpenWrt / Docker), NAS, Mini PCs, PVE, or servers, harmonizing your smart home lights with natural astronomical rhythms, astronomical solar elevation angles, the 24 solar terms, and real-time global weather conditions.
+
+Unlike traditional lighting scripts that continuously poll and force-reset brightness, **GoodLight respects the user**:
+- **Non-Aggressive**: Never fights user adjustments. Adjusting a light manually in Home Assistant or via a physical wall switch teaches GoodLight your localized lighting preferences through online exponential moving average (EMA) learning.
+- **Home Assistant Native**: Connects via high-speed asynchronous WebSocket & REST APIs, automatically discovers `light.*` entities, and dynamically coordinates multiple light groups.
+- **Light Quantity Adaptation**: Intelligently decides not only **how bright** and **what color temperature (K)**, but also **how many lights to turn on** (e.g., single soft nightlight at 3 AM vs. multi-light synergy during productive daytime).
+- **Global Weather & Cloud Compensation**: Integrates Open-Meteo's free, zero-token global weather service to compensate for outdoor temperatures and heavy cloud cover in real time.
+
+---
+
+## ✨ Key Features
+
+### 1. 🏠 Deep Home Assistant (HA) Integration
+- **Event-Driven WebSocket Engine**: Listens to Home Assistant state-change events in real time without high-overhead periodic polling.
+- **Autonomous Light Discovery**: Scans and parses all `light.*` entities in Home Assistant, automatically categorizing dimmable, tunable-white, and switch-only capabilities.
+- **Multi-Group Lighting Orchestration**: Organizes fixtures into independent groups (e.g., Main Ceiling Fixtures, Ambient LED Strips, Desk Lamps) with distinct circadian curves and priority queues.
+
+### 2. ☀️ Astronomical Solar Tracking & 24 Solar Terms
+- **Precise Solar Elevation Angle**: Calculates the exact position of the sun above/below the horizon for your exact geographical coordinates, smoothly guiding transitions through astronomical dawn, dusk, civil twilight, and golden hours.
+- **24 Solar Terms & Seasonal Factor**: Leverages solar ecliptic longitude ($\lambda$) to seamlessly transition between crisp cool tones in summer (up to +300K) and cozy warm amber in winter (down to -300K).
+
+### 3. ⛅ Global Weather & Ambient Temperature Adaptation
+- **Open-Meteo Zero-Token Integration**: No API keys required, works globally out-of-the-box.
+- **Thermal CCT Adaptation**: Adds warm ambiance (-250K) during freezing cold days (< 10°C) and refreshing cool clarity (+200K) during hot summer spells (> 28°C).
+- **Cloud-Cover Daylight Compensation**: Automatically boosts indoor brightness up to **+20%** when outdoor daylight is muted by dense cloud cover (`cloud_cover > 50%`).
+
+### 4. 🎛️ Modern Web Dashboard & 5-Step Setup Wizard
+- **Built-in Web UI (Port 8787)**: Real-time solar metrics, CPU/memory performance graphs, 30-day historical brightness & color temperature curves, and interactive timezone offset tuning.
+- **5-Step Onboarding Wizard**:
+  1. Welcome & project overview
+  2. Home Assistant token entry & connection validation
+  3. Automatic fixture discovery and group assignment
+  4. Global address geocoding search & weather toggle
+  5. One-click config generation & engine deployment
 
 ---
 
@@ -27,12 +58,15 @@
 
 ```text
 GoodLight/
-├── config.example.yaml       # Configuration template (sanitized)
-├── solar.py                  # Astronomical calculations (Elevation, Terms, Seasons)
-├── model.py                  # Adaptive learning model (Spline interpolation & feedback)
-├── ha_client.py              # Home Assistant WebSocket & REST event engine
-├── main.py                   # Service entry point & orchestration
-├── Dockerfile                # Ultra-lightweight Alpine Python container
+├── config.example.yaml   # Sanitized configuration template
+├── solar.py              # Astronomical calculations (Elevation, 24 Solar Terms, Seasons)
+├── model.py              # Adaptive learning model (Hermite splines, weather & user feedback)
+├── ha_client.py          # Home Assistant WebSocket & REST API client with auto-discovery
+├── weather.py            # Open-Meteo global weather & temperature service (Zero-Key)
+├── db.py                 # SQLite historical metrics (Performance & light curves)
+├── web_panel.py          # Modern web dashboard & 5-step onboarding wizard
+├── main.py               # Core orchestrator and event loop
+├── Dockerfile            # Lightweight Docker container definition
 └── README.md
 ```
 
@@ -40,31 +74,76 @@ GoodLight/
 
 ## 🚀 Quick Start
 
-### 1. Configuration
-Copy the template and configure your local settings:
-```bash
-cp config.example.yaml config.yaml
-```
-Edit `config.yaml` with your Home Assistant URL, Long-Lived Access Token, local coordinates, and target light entity IDs.
+### 1. Run with Docker (Recommended)
 
-### 2. Run Locally
-```bash
-pip install aiohttp pyyaml
-python main.py
-```
+GoodLight is designed to run seamlessly alongside your Home Assistant container:
 
-### 3. Run with Docker
 ```bash
-docker build -t goodlight:latest .
 docker run -d \
   --name goodlight \
   --restart unless-stopped \
-  -v $(pwd)/config.yaml:/app/config.yaml \
-  -v $(pwd)/light_profile.json:/app/light_profile.json \
+  --net=host \
+  -v /path/to/goodlight/config.yaml:/app/config.yaml \
+  -v /path/to/goodlight/history.db:/app/history.db \
   goodlight:latest
+```
+
+Once started, open **`http://<YOUR_HOST_IP>:8787`** in your browser to launch the GoodLight Web Panel and complete the setup wizard.
+
+### 2. Run from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/Aragamiz/GoodLight.git
+cd GoodLight
+
+# Install dependencies
+pip install aiohttp pyyaml
+
+# Copy config template
+cp config.example.yaml config.yaml
+
+# Run the GoodLight engine
+python main.py
 ```
 
 ---
 
+## ⚙️ Configuration (`config.yaml`)
+
+```yaml
+home_assistant:
+  url: "http://192.168.1.100:8123"
+  token: "YOUR_HA_LONG_LIVED_ACCESS_TOKEN"
+
+location:
+  latitude: 39.9042
+  longitude: 116.4074
+  timezone_offset: 8.0
+
+weather:
+  enabled: true
+
+groups:
+  - id: "living_room_main"
+    name: "Living Room Main Lights"
+    profile_path: "profile_living_room_main.json"
+    lights:
+      - entity_id: "light.living_room_ceiling"
+        name: "Ceiling Light"
+        priority: 1
+        min_kelvin: 2700
+        max_kelvin: 6500
+```
+
+---
+
+## 📈 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Aragamiz/GoodLight&type=Date)](https://star-history.com/#Aragamiz/GoodLight&Date)
+
+---
+
 ## 📄 License
-MIT License.
+
+This project is licensed under the [MIT License](LICENSE).
