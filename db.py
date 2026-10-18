@@ -9,8 +9,10 @@ GoodLight 历史时序数据存储模块 (SQLite 轻量纯标准库实现)
 import sqlite3
 import time
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any
+
+DEFAULT_TZ = timezone(timedelta(hours=8))
 
 class HistoryDB:
     def __init__(self, db_path: str = "history.db"):
@@ -73,16 +75,15 @@ class HistoryDB:
             conn.execute("DELETE FROM system_metrics WHERE timestamp < ?", (expire_ts,))
             conn.execute("DELETE FROM light_history WHERE timestamp < ?", (expire_ts,))
 
-    def query_metrics(self, hours: float = 24.0) -> Dict[str, List[Any]]:
+    def query_metrics(self, hours: float = 24.0, tz=None) -> Dict[str, List[Any]]:
         start_ts = int(time.time() - hours * 3600)
-        # 根据查询范围动态选择采样间隔，避免返回海量点拖慢前端
         step = 1
-        if hours > 24 * 7:  # 30天
-            step = 120  # 每 2 小时采样
-        elif hours > 24:    # 7天
-            step = 30   # 每半小时采样
-        elif hours > 1:     # 24小时
-            step = 5    # 每 5 分钟采样
+        if hours > 24 * 7:
+            step = 120
+        elif hours > 24:
+            step = 30
+        elif hours > 1:
+            step = 5
 
         with self.get_conn() as conn:
             cur = conn.execute("""
@@ -93,11 +94,13 @@ class HistoryDB:
             """, (start_ts, step))
             rows = cur.fetchall()
 
+        effective_tz = tz or DEFAULT_TZ
         timestamps = []
         cpu_list = []
         mem_list = []
         for r in rows:
-            dt_str = datetime.fromtimestamp(r["timestamp"]).strftime("%m-%d %H:%M" if hours > 24 else "%H:%M")
+            dt = datetime.fromtimestamp(r["timestamp"], tz=effective_tz)
+            dt_str = dt.strftime("%m-%d %H:%M" if hours > 24 else "%H:%M")
             timestamps.append(dt_str)
             cpu_list.append(round(r["cpu_percent"], 1))
             mem_list.append(round(r["mem_rss_mb"], 1))
@@ -108,7 +111,7 @@ class HistoryDB:
             "memory": mem_list
         }
 
-    def query_light_history(self, hours: float = 24.0) -> Dict[str, Any]:
+    def query_light_history(self, hours: float = 24.0, tz=None) -> Dict[str, Any]:
         start_ts = int(time.time() - hours * 3600)
         step = 1
         if hours > 24 * 7:
@@ -127,13 +130,14 @@ class HistoryDB:
             """, (start_ts, step))
             rows = cur.fetchall()
 
-        # 按 entity_id 分组
+        effective_tz = tz or DEFAULT_TZ
         entities = {}
         for r in rows:
             ent = r["entity_id"]
             if ent not in entities:
                 entities[ent] = {"labels": [], "brightness": [], "color_temp": []}
-            dt_str = datetime.fromtimestamp(r["timestamp"]).strftime("%m-%d %H:%M" if hours > 24 else "%H:%M")
+            dt = datetime.fromtimestamp(r["timestamp"], tz=effective_tz)
+            dt_str = dt.strftime("%m-%d %H:%M" if hours > 24 else "%H:%M")
             entities[ent]["labels"].append(dt_str)
             entities[ent]["brightness"].append(round(r["brightness"], 1) if r["brightness"] is not None else 0)
             entities[ent]["color_temp"].append(r["color_temp"] if r["color_temp"] is not None else 0)

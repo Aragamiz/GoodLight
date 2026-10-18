@@ -3,14 +3,25 @@ GoodLight 守护服务核心主程序 (支持多灯光独立分组与动态时�
 """
 
 import os
+import time
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
+
+# 默认设置上海/北京时区 (UTC+8)，确保 Linux Docker 环境中 localtime 与日志时间对齐
+if "TZ" not in os.environ:
+    os.environ["TZ"] = "Asia/Shanghai"
+if hasattr(time, "tzset"):
+    try:
+        time.tzset()
+    except Exception:
+        pass
+
 import yaml
 from solar import SolarCalculator
 from model import GoodLightModel
 from ha_client import HAClient
-from web_panel import WebPanel, add_log
+from web_panel import WebPanel, add_log, set_log_tz
 from db import HistoryDB
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -90,6 +101,7 @@ class GoodLightService:
         """动态更新时区"""
         self.tz_offset = offset_hours
         self.tz = timezone(timedelta(hours=offset_hours))
+        set_log_tz(self.tz)
         self.cfg["location"]["timezone_offset"] = offset_hours
         self.solar.tz_offset = offset_hours
         self.solar.tz = self.tz

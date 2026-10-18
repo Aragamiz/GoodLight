@@ -6,13 +6,19 @@ import os
 import time
 import json
 import collections
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from aiohttp import web
 
 LOG_BUFFER = collections.deque(maxlen=200)
+_CURRENT_TZ = timezone(timedelta(hours=8))
+
+def set_log_tz(tz):
+    global _CURRENT_TZ
+    _CURRENT_TZ = tz
 
 def add_log(msg: str):
-    timestamp = datetime.now().strftime("%H:%M:%S")
+    now = datetime.now(_CURRENT_TZ) if _CURRENT_TZ else datetime.now(timezone(timedelta(hours=8)))
+    timestamp = now.strftime("%H:%M:%S")
     LOG_BUFFER.append(f"[{timestamp}] {msg}")
 
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -171,31 +177,38 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
   </div>
 
-  <!-- 时间与时区控制条 -->
-  <div class="card" style="padding: 14px 18px; margin-bottom: 16px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+  <!-- 调试与开发者模式 (Debug Panel, 默认折叠收起) -->
+  <details class="card" style="margin-bottom: 16px; padding: 12px 18px;">
+    <summary style="font-size: 13px; color: var(--subtext); cursor: pointer; user-select: none; font-weight: 600; display: flex; align-items: center; justify-content: space-between; list-style: none;">
+      <span style="display: flex; align-items: center; gap: 8px;">
+        <span>🛠️ 开发者与调试工具 (Debug Tools)</span>
+        <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: var(--primary); padding: 2px 8px; border-radius: 4px;">时区自由选择 / 仿真时间测试</span>
+      </span>
+      <span id="debug-toggle-icon" style="font-size: 12px; color: var(--primary);">展开 ▼</span>
+    </summary>
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border);">
       <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="font-size: 13px; color: var(--subtext);">🌐 时区选择:</span>
+        <span style="font-size: 13px; color: var(--subtext);">🌐 时区自由选择:</span>
         <select id="tz-select" onchange="onTimezoneChange(this.value)">
           <option value="8.0">UTC+8 (北京 / 上海 / 香港 / 台北)</option>
           <option value="9.0">UTC+9 (东京 / 首尔)</option>
-          <option value="0.0">UTC+0 (伦敦 / GMT)</option>
+          <option value="0.0">UTC+0 (伦敦 / 格林尼治 GMT)</option>
           <option value="1.0">UTC+1 (巴黎 / 柏林)</option>
           <option value="-5.0">UTC-5 (纽约 / 美东)</option>
           <option value="-8.0">UTC-8 (旧金山 / 洛杉矶 / 太平洋)</option>
         </select>
       </div>
 
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 13px; color: var(--subtext);">⏳ 时间微调测试:</span>
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <span style="font-size: 13px; color: var(--subtext);">⏳ 时间微调仿真:</span>
         <button class="btn-action" onclick="adjustTime(-60)">-1小时</button>
         <button class="btn-action" onclick="adjustTime(-15)">-15分</button>
         <button class="btn-action" onclick="adjustTime(15)">+15分</button>
         <button class="btn-action" onclick="adjustTime(60)">+1小时</button>
-        <button class="btn-action" style="border-color: var(--accent); color: var(--accent);" onclick="resetTime()">重置当前时间</button>
+        <button class="btn-action" style="border-color: var(--accent); color: var(--accent);" onclick="resetTime()">重置为实时时间</button>
       </div>
     </div>
-  </div>
+  </details>
 
   <div class="grid">
     <div class="card">
@@ -343,6 +356,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         body: JSON.stringify({ timezone_offset: parseFloat(val) })
       });
       await updateDashboard();
+      await updatePerfData();
+      await updateLightData();
     }
 
     async function adjustTime(minutes) {
@@ -469,6 +484,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
 
+    let serverCurrentTimeStr = null;
+
     function renderCurrentGroup() {
       if (!selectedGroupId || !groupsData[selectedGroupId]) return;
       const g = groupsData[selectedGroupId];
@@ -479,7 +496,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       document.getElementById('predict-count').innerText = `建议开启灯具: ${g.prediction.light_count} 盏`;
       document.getElementById('table-title').innerText = `[${g.name}] 24小时自适应曲线`;
 
-      const currentHour = new Date().getHours();
+      let currentHour = new Date().getHours();
+      if (serverCurrentTimeStr) {
+        try {
+          const parts = serverCurrentTimeStr.split(' ')[1].split(':');
+          currentHour = parseInt(parts[0], 10);
+        } catch (e) {}
+      }
+
       const tbody = document.getElementById('curve-tbody');
       tbody.innerHTML = '';
       for (let h = 0; h < 24; h++) {
@@ -503,6 +527,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const resp = await fetch('/api/status');
         const data = await resp.json();
 
+        serverCurrentTimeStr = data.time.current_time;
         document.getElementById('sim-time-badge').innerText = `当前系统时间: ${data.time.current_time} (UTC${data.time.timezone_offset>=0?'+':''}${data.time.timezone_offset})`;
         document.getElementById('tz-select').value = data.time.timezone_offset.toFixed(1);
 
@@ -540,6 +565,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     window.onload = async () => {
       initPerfChart();
+      const debugDetails = document.querySelector('details');
+      if (debugDetails) {
+        debugDetails.addEventListener('toggle', function() {
+          const icon = document.getElementById('debug-toggle-icon');
+          if (icon) icon.innerText = this.open ? '收起 ▲' : '展开 ▼';
+        });
+      }
       await updateDashboard();
       await updatePerfData();
       await updateLightData();
@@ -557,6 +589,7 @@ class WebPanel:
         self.service = service_instance
         self.host = host
         self.port = port
+        set_log_tz(self.service.tz)
         self.start_time = time.time()
         self.app = web.Application()
         self.app.router.add_get("/", self.handle_index)
@@ -665,6 +698,7 @@ class WebPanel:
         req_data = await request.json()
         offset = float(req_data.get("timezone_offset", 8.0))
         self.service.update_timezone(offset)
+        set_log_tz(self.service.tz)
         return web.json_response({"ok": True, "offset": offset})
 
     async def handle_control_time_adjust(self, request):
@@ -679,12 +713,12 @@ class WebPanel:
 
     async def handle_api_history_perf(self, request):
         hours = float(request.query.get("hours", 24))
-        data = self.service.db.query_metrics(hours=hours)
+        data = self.service.db.query_metrics(hours=hours, tz=self.service.tz)
         return web.json_response(data)
 
     async def handle_api_history_lights(self, request):
         hours = float(request.query.get("hours", 24))
-        data = self.service.db.query_light_history(hours=hours)
+        data = self.service.db.query_light_history(hours=hours, tz=self.service.tz)
         return web.json_response(data)
 
     async def start(self):
