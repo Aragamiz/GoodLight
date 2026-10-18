@@ -1,16 +1,13 @@
 # GoodLight 🌟
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/home-assistant/brands/master/core_badges/dark/badge.png" width="160" alt="Home Assistant" /><br/>
-  <strong>An autonomous, self-learning adaptive circadian lighting engine seamlessly integrated with Home Assistant (HA).</strong>
-</p>
+> **An autonomous, self-learning adaptive circadian lighting engine seamlessly integrated with Home Assistant (HA).**
 
-<p align="center">
-  <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-Compatible-41BDF5?style=for-the-badge&logo=home-assistant&logoColor=white" alt="Home Assistant" /></a>
-  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" /></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.9+" /></a>
-  <a href="https://github.com/Aragamiz/GoodLight/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License: MIT" /></a>
-  <a href="https://github.com/Aragamiz/GoodLight/stargazers"><img src="https://img.shields.io/github/stars/Aragamiz/GoodLight?style=for-the-badge&logo=github&color=gold" alt="GitHub Stars" /></a>
+<p align="left">
+  <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-Compatible-41BDF5?style=flat-square&logo=home-assistant&logoColor=white" alt="Home Assistant" /></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker" /></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.9%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.9+" /></a>
+  <a href="https://github.com/Aragamiz/GoodLight/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License: MIT" /></a>
+  <a href="https://github.com/Aragamiz/GoodLight/stargazers"><img src="https://img.shields.io/github/stars/Aragamiz/GoodLight?style=flat-square&logo=github" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -135,12 +132,6 @@ groups:
         min_kelvin: 2700
         max_kelvin: 6500
 ```
-
----
-
-## 📈 Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Aragamiz/GoodLight&type=Date)](https://star-history.com/#Aragamiz/GoodLight&Date)
 
 ---
 
