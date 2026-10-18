@@ -166,6 +166,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-size: 13px;
       outline: none;
     }
+    .mode-select {
+      background: #090e1a;
+      border: 1px solid var(--border);
+      color: #94a3b8;
+      font-size: 11px;
+      border-radius: 5px;
+      padding: 2px 4px;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .mode-select:hover, .mode-select:focus {
+      border-color: var(--primary);
+      color: #f8fafc;
+    }
 
     /* 预装与配置向导 (Onboarding Wizard) 样式 */
     .modal-overlay {
@@ -700,6 +715,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         btnSyncHistoryDash: "🔄 从 HA 历史回溯学习曲线 (14天)",
         lblInactiveMenu: "📁 未勾选灯具 (二级菜单)",
         btnApplySuggestion: "⚡ 应用建议",
+        modeActive: "全主动巡航",
+        modeTurnOn: "打断模式",
+        modePassive: "被动学习",
+        modeActiveTitle: "全主动巡航：开灯自动对齐 + 开灯期间随时间平滑渐变调光调色",
+        modeTurnOnTitle: "打断模式：仅在开灯瞬间设定为曲线目标，开灯期间保持恒定",
+        modePassiveTitle: "被动学习：不主动改光，仅记录并学习用户日常调光偏好",
         thTime: "时间点",
         thBright: "学习亮度",
         thCct: "学习色温",
@@ -728,6 +749,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         btnSyncHistoryDash: "🔄 Sync HA History (14 Days)",
         lblInactiveMenu: "📁 Inactive Lights (Secondary Menu)",
         btnApplySuggestion: "⚡ Apply Suggestion",
+        modeActive: "Active Cruise",
+        modeTurnOn: "Turn-On Only",
+        modePassive: "Passive Learn",
+        modeActiveTitle: "Active Cruise: Auto smooth transition along circadian curve over time",
+        modeTurnOnTitle: "Turn-On Only: Align on turn-on only, keep steady during cruise",
+        modePassiveTitle: "Passive Learn: Never auto-dim, only learn manual adjustments",
         thTime: "Time",
         thBright: "Learned Brightness",
         thCct: "Learned CCT",
@@ -1500,10 +1527,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
 
+    async function setLightMode(entityId, mode) {
+      try {
+        const resp = await fetch('/api/control/light_mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entity_id: entityId, mode: mode })
+        });
+        const res = await resp.json();
+        if (res.ok) {
+          await updateDashboard();
+        }
+      } catch (e) {
+        console.error('设置模式失败:', e);
+      }
+    }
+
     function renderCurrentGroup() {
       if (!selectedGroupId) return;
       const isAll = (selectedGroupId === '__all__');
       const g = isAll ? null : groupsData[selectedGroupId];
+      const t = I18N[currentLang] || I18N.zh;
 
       const curNameEl = document.getElementById('current-group-name');
       if (curNameEl) {
@@ -1548,15 +1592,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       // 1. 首页只显示勾选开启的
       if (activeContainer) {
         if (activeLights.length > 0) {
-          activeContainer.innerHTML = activeLights.map(l => `
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 5px 8px; transition: 0.2s;">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; user-select: none; flex: 1;">
-                <input type="checkbox" checked onchange="toggleLightState('${l.entity_id}', false)" style="width: 15px; height: 15px; accent-color: #38bdf8; cursor: pointer;">
-                <span style="font-size: 13px; font-weight: 600; color: #f8fafc;">💡 ${l.name}</span>
+          activeContainer.innerHTML = activeLights.map(l => {
+            const curMode = l.mode || 'active';
+            return `
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 5px 8px; transition: 0.2s;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; user-select: none; flex: 1; min-width: 0;">
+                <input type="checkbox" checked onchange="toggleLightState('${l.entity_id}', false)" style="width: 15px; height: 15px; accent-color: #38bdf8; cursor: pointer; flex-shrink: 0;">
+                <span style="font-size: 13px; font-weight: 600; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">💡 ${l.name}</span>
               </label>
-              <span style="font-size: 11px; font-weight: 600; color: #38bdf8; background: #0b172a; padding: 2px 6px; border-radius: 4px;">${l.brightness}% · ${l.color_temp}K</span>
-            </div>
-          `).join('');
+              <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                <span style="font-size: 11px; font-weight: 600; color: #38bdf8; background: #0b172a; padding: 2px 6px; border-radius: 4px;">${l.brightness}% · ${l.color_temp}K</span>
+                <select class="mode-select" onchange="setLightMode('${l.entity_id}', this.value)">
+                  <option value="active" ${curMode==='active'?'selected':''} title="${t.modeActiveTitle}">🌊 ${t.modeActive}</option>
+                  <option value="turn_on" ${curMode==='turn_on'?'selected':''} title="${t.modeTurnOnTitle}">⚡ ${t.modeTurnOn}</option>
+                  <option value="passive" ${curMode==='passive'?'selected':''} title="${t.modePassiveTitle}">🧠 ${t.modePassive}</option>
+                </select>
+              </div>
+            </div>`;
+          }).join('');
         } else {
           activeContainer.innerHTML = `<div style="font-size: 12px; color: var(--subtext); padding: 6px 0; text-align: center;">⚪ ${currentLang === 'en' ? 'No active lights (All off in secondary menu)' : '暂无开启灯具 (均在二级菜单中)'}</div>`;
         }
@@ -1565,15 +1618,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       // 2. 未勾选放入二级菜单
       if (inactiveContainer) {
         if (inactiveLights.length > 0) {
-          inactiveContainer.innerHTML = inactiveLights.map(l => `
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; user-select: none; flex: 1;">
-                <input type="checkbox" onchange="toggleLightState('${l.entity_id}', true)" style="width: 15px; height: 15px; accent-color: #38bdf8; cursor: pointer;">
-                <span style="font-size: 12px; color: #94a3b8;">${l.name}</span>
+          inactiveContainer.innerHTML = inactiveLights.map(l => {
+            const curMode = l.mode || 'active';
+            return `
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; user-select: none; flex: 1; min-width: 0;">
+                <input type="checkbox" onchange="toggleLightState('${l.entity_id}', true)" style="width: 15px; height: 15px; accent-color: #38bdf8; cursor: pointer; flex-shrink: 0;">
+                <span style="font-size: 12px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${l.name}</span>
               </label>
-              <span style="font-size: 11px; color: #64748b;">${currentLang === 'en' ? 'Off' : '关闭'}</span>
-            </div>
-          `).join('');
+              <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                <span style="font-size: 11px; color: #64748b;">${currentLang === 'en' ? 'Off' : '关闭'}</span>
+                <select class="mode-select" onchange="setLightMode('${l.entity_id}', this.value)">
+                  <option value="active" ${curMode==='active'?'selected':''} title="${t.modeActiveTitle}">🌊 ${t.modeActive}</option>
+                  <option value="turn_on" ${curMode==='turn_on'?'selected':''} title="${t.modeTurnOnTitle}">⚡ ${t.modeTurnOn}</option>
+                  <option value="passive" ${curMode==='passive'?'selected':''} title="${t.modePassiveTitle}">🧠 ${t.modePassive}</option>
+                </select>
+              </div>
+            </div>`;
+          }).join('');
         } else {
           inactiveContainer.innerHTML = `<div style="font-size: 11px; color: var(--subtext); padding: 4px 0; text-align: center;">${currentLang === 'en' ? 'All lights are active on Home' : '所有灯具均已开启在首页'}</div>`;
         }
@@ -1731,6 +1793,7 @@ class WebPanel:
         self.app.router.add_post("/api/control/time_adjust", self.handle_control_time_adjust)
         self.app.router.add_post("/api/control/time_reset", self.handle_control_time_reset)
         self.app.router.add_post("/api/control/light_toggle", self.handle_control_light_toggle)
+        self.app.router.add_post("/api/control/light_mode", self.handle_control_light_mode)
         self.app.router.add_post("/api/control/apply_suggestion", self.handle_control_apply_suggestion)
         self.app.router.add_post("/api/setup/test_connection", self.handle_api_setup_test)
         self.app.router.add_get("/api/setup/discover_lights", self.handle_api_setup_discover)
@@ -1818,6 +1881,7 @@ class WebPanel:
                     "group_id": gid,
                     "group_name": grp.name,
                     "priority": item.get("priority", 1),
+                    "mode": item.get("mode", "active"),
                     "state": st.get("state", "off"),
                     "brightness": st.get("brightness", 0),
                     "color_temp": st.get("color_temp", 4000)
@@ -1863,6 +1927,16 @@ class WebPanel:
             target_state = req_data.get("state", "off")
             res = await self.service.toggle_light(ent, target_state)
             return web.json_response(res)
+        except Exception as e:
+            return web.json_response({"ok": False, "message": str(e)})
+
+    async def handle_control_light_mode(self, request):
+        try:
+            req_data = await request.json()
+            ent = req_data.get("entity_id")
+            mode = req_data.get("mode", "active")
+            ok = self.service.set_light_mode(ent, mode)
+            return web.json_response({"ok": ok, "entity_id": ent, "mode": mode})
         except Exception as e:
             return web.json_response({"ok": False, "message": str(e)})
 

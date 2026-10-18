@@ -75,6 +75,7 @@ class GoodLightService:
         self.db = HistoryDB(db_path="history.db")
         self.ignore_updates = set()
         self.light_states: dict[str, dict] = {}
+        self.last_manual_adjust: dict[str, float] = {}
 
         # 初始化分组
         self.groups: dict[str, LightGroup] = {}
@@ -402,6 +403,43 @@ class GoodLightService:
 
         return {"ok": True, "turned_on": total_turned_on}
 
+    def set_light_mode(self, entity_id: str, mode: str) -> bool:
+        """切换单个灯具的工作模式: active (全主动巡航) | turn_on (打断模式) | passive (被动学习)"""
+        found = False
+        for g in self.cfg.get("groups", []):
+            for l in g.get("lights", []):
+                if l.get("entity_id") == entity_id:
+                    l["mode"] = mode
+                    found = True
+                    break
+        if not found and "lighting_group" in self.cfg:
+            for l in self.cfg["lighting_group"].get("lights", []):
+                if l.get("entity_id") == entity_id:
+                    l["mode"] = mode
+                    found = True
+                    break
+
+        grp = self.entity_to_group.get(entity_id)
+        if grp:
+            for l in grp.lights:
+                if l.get("entity_id") == entity_id:
+                    l["mode"] = mode
+                    break
+
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
+            mode_names = {
+                "active": "🌊 全主动巡航",
+                "turn_on": "⚡ 打断模式(仅开灯时)",
+                "passive": "🧠 被动学习(仅记录)"
+            }
+            add_log(f"灯具 {entity_id} 模式已变更为: {mode_names.get(mode, mode)}")
+            return True
+        except Exception as e:
+            logger.error(f"保存灯具模式失败: {e}")
+            return False
+
     def get_current_time(self) -> datetime:
         return datetime.now(self.tz) + timedelta(seconds=self.time_offset_seconds)
 
@@ -413,9 +451,73 @@ class GoodLightService:
         await self.web_panel.start()
         asyncio.create_task(self._weather_loop())
         asyncio.create_task(self._metrics_sampler_loop())
+        asyncio.create_task(self._active_cruise_loop())
         self.client.register_event_listener(self.on_state_changed)
         asyncio.create_task(self._init_light_states())
         await self.client.connect()
+
+    async def _active_cruise_loop(self):
+        """全主动自适应巡航循环：对于处于开灯状态且开启全主动模式的灯具，随时间沿自适应曲线平滑渐变调光调色"""
+        await asyncio.sleep(10)
+        while True:
+            try:
+                now = self.get_current_time()
+                h_float = now.hour + now.minute / 60.0 + now.second / 3600.0
+                elevation = self.solar.get_solar_elevation(now)
+                season_factor = self.solar.get_season_factor(now)
+                w_summary = self.weather.get_summary() if self.weather.enabled else {}
+                curr_temp = w_summary.get("apparent_temperature") or w_summary.get("temperature")
+                curr_clouds = w_summary.get("cloud_cover")
+
+                for gid, grp in self.groups.items():
+                    if not grp.enabled:
+                        continue
+
+                    pred = grp.model.predict(
+                        hour_float=h_float,
+                        solar_elevation=elevation,
+                        season_factor=season_factor,
+                        temp_celsius=curr_temp,
+                        cloud_cover=curr_clouds
+                    )
+                    target_b_pct = pred["brightness"]
+                    target_b_255 = max(1, min(255, round((target_b_pct / 100.0) * 255)))
+                    target_k = pred["color_temp"]
+
+                    for item in grp.lights:
+                        ent = item["entity_id"]
+                        mode = item.get("mode", "active")
+                        if mode != "active":
+                            continue
+
+                        st = self.light_states.get(ent, {})
+                        if st.get("state") != "on":
+                            continue
+
+                        # 用户最近 5 分钟手动微调过，保持用户喜好暂不覆盖
+                        last_man = self.last_manual_adjust.get(ent, 0)
+                        if time.time() - last_man < 300:
+                            continue
+
+                        curr_b = st.get("brightness", 0)
+                        curr_k = st.get("color_temp", 4000)
+
+                        if abs(curr_b - target_b_pct) >= 1.5 or abs(curr_k - target_k) >= 30:
+                            self.ignore_updates.add(ent)
+                            await self.client.call_service("light", "turn_on", {
+                                "entity_id": ent,
+                                "brightness": target_b_255,
+                                "color_temp_kelvin": target_k,
+                                "transition": 15
+                            })
+                            st["brightness"] = target_b_pct
+                            st["color_temp"] = target_k
+                            self.light_states[ent] = st
+                            self.db.record_light_state(ent, target_b_pct, target_k, "on")
+                            logger.debug(f"[{grp.name}] 主动巡航平滑微调: {ent} -> {target_b_pct}% / {target_k}K")
+            except Exception as e:
+                logger.debug(f"主动巡航循环异常: {e}")
+            await asyncio.sleep(30)
 
     async def _weather_loop(self):
         while True:
@@ -505,6 +607,7 @@ class GoodLightService:
 
             b_changed = (old_b is not None and new_b is not None and abs(old_b - new_b) >= 3)
             if b_changed:
+                self.last_manual_adjust[entity_id] = time.time()
                 self.schedule_learning(grp, hour_float, actual_b=pct_b)
 
     async def handle_light_turned_on(self, grp: LightGroup, triggered_entity: str, dt: datetime, hour_float: float):
@@ -534,6 +637,13 @@ class GoodLightService:
         t_io_start = time.perf_counter()
         io_tasks = []
         for idx, ent in enumerate(grp.light_entities):
+            item_cfg = next((item for item in grp.lights if item.get("entity_id") == ent), {})
+            mode = item_cfg.get("mode", "active")
+
+            # 若处于被动学习模式 (passive)，GoodLight 不主动下发指令调光
+            if mode == "passive":
+                continue
+
             if idx < target_count:
                 self.ignore_updates.add(ent)
                 io_tasks.append(self.client.call_service("light", "turn_on", {
@@ -566,7 +676,7 @@ class GoodLightService:
                 actual_count=actual_count,
                 learning_rate=lr
             )
-            add_log(f"[{grp.name}] 收到手动调光并完成局部学习 (时刻: {hour_float:.1f}h -> 亮度: {actual_b}%)")
+            add_log(f"[{grp.name}] 触发被动学习: 用户手动调光至 {actual_b}% (时刻: {hour_float:.1f}h，自适应曲线已完成局部学习更新)")
 
         if "learn" in grp.debounce_tasks:
             grp.debounce_tasks["learn"].cancel()
