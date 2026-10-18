@@ -27,6 +27,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GoodLight Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiBmaWxsPSJub25lIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZ2xHcmFkIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzM4YmRmOCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjUwJSIgc3RvcC1jb2xvcj0iIzgxOGNmOCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNmYmJmMjQiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImdsQmciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjMGUxNzI2Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzFlMjkzYiIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxyYWRpYWxHcmFkaWVudCBpZD0iZ2xHbG93IiBjeD0iNTAlIiBjeT0iNDUlIiByPSI1MCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZmJiZjI0IiBzdG9wLW9wYWNpdHk9IjAuNDUiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI2MCUiIHN0b3AtY29sb3I9IiMzOGJkZjgiIHN0b3Atb3BhY2l0eT0iMC4xNSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMzOGJkZjgiIHN0b3Atb3BhY2l0eT0iMCIvPgogICAgPC9yYWRpYWxHcmFkaWVudD4KICA8L2RlZnM+CiAgPHJlY3QgeD0iMS41IiB5PSIxLjUiIHdpZHRoPSIyOSIgaGVpZ2h0PSIyOSIgcng9IjcuNSIgZmlsbD0idXJsKCNnbEJnKSIgc3Ryb2tlPSJ1cmwoI2dsR3JhZCkiIHN0cm9rZS13aWR0aD0iMS40Ii8+CiAgPGNpcmNsZSBjeD0iMTYiIGN5PSIxNCIgcj0iMTAiIGZpbGw9InVybCgjZ2xHbG93KSIvPgogIDxwYXRoIGQ9Ik0xNiA2LjUgQzEyIDYuNSA5LjUgOS41IDkuNSAxMy41IEM5LjUgMTYuMiAxMS4yIDE4LjIgMTIuNSAxOS44IEwxMi41IDIxLjggQzEyLjUgMjIuNCAxMi45IDIyLjggMTMuNSAyMi44IEwxOC41IDIyLjggQzE5LjEgMjIuOCAxOS41IDIyLjQgMTkuNSAyMS44IEwxOS41IDE5LjggQzIwLjggMTguMiAyMi41IDE2LjIgMjIuNSAxMy41IEMyMi41IDkuNSAyMCA2LjUgMTYgNi41IFoiIGZpbGw9Im5vbmUiIHN0cm9rZT0idXJsKCNnbEdyYWQpIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CiAgPHBhdGggZD0iTTEzLjggMjQuOCBMMTguMiAyNC44IiBzdHJva2U9IiNmYmJmMjQiIHN0cm9rZS13aWR0aD0iMS42IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8cGF0aCBkPSJNMTYgOS41IEwxNi44IDEyLjIgTDE5LjUgMTMgQzE5LjggMTMuMSAxOS44IDEzLjUgMTkuNSAxMy42IEwxNi44IDE0LjQgTDE2IDE3LjEgQzE1LjkgMTcuNCAxNS41IDE3LjQgMTUuNCAxNy4xIEwxNC42IDE0LjQgTDExLjkgMTMuNiBDMTEuNiAxMy41IDExLjYgMTMuMSAxMS45IDEzIEwxNC42IDEyLjIgTDE1LjQgOS41IEMxNS41IDkuMiAxNS45IDkuMiAxNiA5LjUgWiIgZmlsbD0iI2ZmZmZmZiIvPgogIDxjaXJjbGUgY3g9IjE2IiBjeT0iMTMuMyIgcj0iMS4yIiBmaWxsPSIjZmJiZjI0Ii8+Cjwvc3ZnPg==">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -336,7 +337,33 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
   <div class="header">
-    <div class="title" id="page-title">🌟 GoodLight 控制面板</div>
+    <div class="title" style="display: flex; align-items: center; gap: 10px;">
+      <svg width="28" height="28" viewBox="0 0 32 32" fill="none" style="filter: drop-shadow(0 2px 8px rgba(56, 189, 248, 0.4)); flex-shrink: 0;">
+        <defs>
+          <linearGradient id="hdrGlGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#38bdf8"/>
+            <stop offset="50%" stop-color="#818cf8"/>
+            <stop offset="100%" stop-color="#fbbf24"/>
+          </linearGradient>
+          <linearGradient id="hdrGlBg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#0e1726"/>
+            <stop offset="100%" stop-color="#1e293b"/>
+          </linearGradient>
+          <radialGradient id="hdrGlGlow" cx="50%" cy="45%" r="50%">
+            <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.45"/>
+            <stop offset="60%" stop-color="#38bdf8" stop-opacity="0.15"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <rect x="1.5" y="1.5" width="29" height="29" rx="7.5" fill="url(#hdrGlBg)" stroke="url(#hdrGlGrad)" stroke-width="1.4"/>
+        <circle cx="16" cy="14" r="10" fill="url(#hdrGlGlow)"/>
+        <path d="M16 6.5 C12 6.5 9.5 9.5 9.5 13.5 C9.5 16.2 11.2 18.2 12.5 19.8 L12.5 21.8 C12.5 22.4 12.9 22.8 13.5 22.8 L18.5 22.8 C19.1 22.8 19.5 22.4 19.5 21.8 L19.5 19.8 C20.8 18.2 22.5 16.2 22.5 13.5 C22.5 9.5 20 6.5 16 6.5 Z" fill="none" stroke="url(#hdrGlGrad)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M13.8 24.8 L18.2 24.8" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/>
+        <path d="M16 9.5 L16.8 12.2 L19.5 13 C19.8 13.1 19.8 13.5 19.5 13.6 L16.8 14.4 L16 17.1 C15.9 17.4 15.5 17.4 15.4 17.1 L14.6 14.4 L11.9 13.6 C11.6 13.5 11.6 13.1 11.9 13 L14.6 12.2 L15.4 9.5 C15.5 9.2 15.9 9.2 16 9.5 Z" fill="#ffffff"/>
+        <circle cx="16" cy="13.3" r="1.2" fill="#fbbf24"/>
+      </svg>
+      <span id="page-title">GoodLight 控制面板</span>
+    </div>
     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
       <button class="btn-action" id="btn-lang-toggle" onclick="toggleLanguage()" style="font-weight: 600; border-color: var(--primary); color: var(--primary);">🌐 English</button>
       <button class="btn-action" id="btn-open-wizard" style="border-color: var(--primary); color: var(--primary); font-weight: 600;" onclick="openWizard()">🚀 启动与配置向导</button>
@@ -363,6 +390,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <!-- Step 1: 欢迎界面 GoodLight -->
       <div id="wizard-step-1">
         <div style="text-align: center; padding: 20px 0 24px;">
+          <div style="display: flex; justify-content: center; margin-bottom: 14px;">
+            <svg width="60" height="60" viewBox="0 0 32 32" fill="none" style="filter: drop-shadow(0 4px 16px rgba(56, 189, 248, 0.45));">
+              <rect x="1.5" y="1.5" width="29" height="29" rx="7.5" fill="url(#hdrGlBg)" stroke="url(#hdrGlGrad)" stroke-width="1.4"/>
+              <circle cx="16" cy="14" r="10" fill="url(#hdrGlGlow)"/>
+              <path d="M16 6.5 C12 6.5 9.5 9.5 9.5 13.5 C9.5 16.2 11.2 18.2 12.5 19.8 L12.5 21.8 C12.5 22.4 12.9 22.8 13.5 22.8 L18.5 22.8 C19.1 22.8 19.5 22.4 19.5 21.8 L19.5 19.8 C20.8 18.2 22.5 16.2 22.5 13.5 C22.5 9.5 20 6.5 16 6.5 Z" fill="none" stroke="url(#hdrGlGrad)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M13.8 24.8 L18.2 24.8" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M16 9.5 L16.8 12.2 L19.5 13 C19.8 13.1 19.8 13.5 19.5 13.6 L16.8 14.4 L16 17.1 C15.9 17.4 15.5 17.4 15.4 17.1 L14.6 14.4 L11.9 13.6 C11.6 13.5 11.6 13.1 11.9 13 L14.6 12.2 L15.4 9.5 C15.5 9.2 15.9 9.2 16 9.5 Z" fill="#ffffff"/>
+              <circle cx="16" cy="13.3" r="1.2" fill="#fbbf24"/>
+            </svg>
+          </div>
           <h1 style="font-size: 38px; font-weight: 800; background: linear-gradient(135deg, #38bdf8 0%, #fbbf24 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px;">GoodLight</h1>
           <div style="font-size: 15px; color: var(--subtext); margin-bottom: 24px;">智能天体节气自适应全屋照明系统</div>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; text-align: left; margin-bottom: 28px;">
@@ -701,7 +738,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     const I18N = {
       zh: {
-        pageTitle: "🌟 GoodLight 控制面板",
+        pageTitle: "GoodLight 控制面板",
         langBtn: "🌐 English",
         openWizard: "🚀 启动与配置向导",
         running: "● 正在运行",
@@ -735,7 +772,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         txtWizSyncDesc: "直接读取所选灯具在 Home Assistant 中的真实历史调光与色温样本，瞬间生成个性化自适应昼夜曲线，无需从零等待数周日常学习。"
       },
       en: {
-        pageTitle: "🌟 GoodLight Dashboard",
+        pageTitle: "GoodLight Dashboard",
         langBtn: "🌐 中文",
         openWizard: "🚀 Setup Wizard",
         running: "● Running",

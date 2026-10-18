@@ -1,5 +1,6 @@
 # GoodLight 🌟
 
+> *Auto light like your iPhone.*  
 > **An autonomous, self-learning adaptive circadian lighting engine seamlessly integrated with Home Assistant (HA).**
 
 <p align="left">
