@@ -56,6 +56,7 @@ class GoodLightService:
         self.tz_offset = float(loc_cfg.get("timezone_offset", 8.0))
         self.time_offset_seconds = 0  # 允许在 Panel 中微调时间偏移量 (秒)
         self.tz = timezone(timedelta(hours=self.tz_offset))
+        self.ui_language = self.cfg.get("ui_language", "zh")
 
         ha_url = os.environ.get("GOODLIGHT_HA_URL", ha_cfg["url"])
         ha_token = os.environ.get("GOODLIGHT_HA_TOKEN", ha_cfg.get("token", ""))
@@ -152,6 +153,10 @@ class GoodLightService:
             self.cfg["weather"]["enabled"] = weather_enabled
             self.weather.enabled = weather_enabled
 
+            if "ui_language" in setup_data:
+                self.ui_language = setup_data["ui_language"]
+                self.cfg["ui_language"] = self.ui_language
+
             # 持久化写入配置文件
             with open(self.config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
@@ -172,6 +177,82 @@ class GoodLightService:
             logger.error(f"保存或重载配置失败: {e}")
             add_log(f"保存配置失败: {e}")
             return False
+
+    def set_ui_language(self, lang: str):
+        self.ui_language = lang
+        self.cfg["ui_language"] = lang
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
+        except Exception as e:
+            logger.warning(f"保存语言配置失败: {e}")
+
+    async def sync_history_from_ha(self, days: int = 14) -> dict:
+        """从 Home Assistant 历史数据库回溯学习真实开关灯习惯与光照样本"""
+        total_samples = 0
+        entity_stats = {}
+        add_log(f"开始从 Home Assistant 回溯历史数据 (过去 {days} 天)...")
+
+        for gid, grp in self.groups.items():
+            grp_samples = 0
+            for ent in grp.light_entities:
+                states = await self.client.get_entity_history(ent, days=days)
+                ent_on_samples = 0
+                for st in states:
+                    if st.get("state") == "on":
+                        attrs = st.get("attributes", {})
+                        b = attrs.get("brightness")
+                        c = attrs.get("color_temp_kelvin") or attrs.get("color_temp")
+                        if c and c < 1000:
+                            try:
+                                c = int(1000000 / c)
+                            except Exception:
+                                c = None
+
+                        last_updated_str = st.get("last_updated")
+                        if last_updated_str:
+                            try:
+                                dt_utc = datetime.fromisoformat(last_updated_str)
+                                dt_local = dt_utc.astimezone(self.tz)
+                                h_float = dt_local.hour + dt_local.minute / 60.0 + dt_local.second / 3600.0
+                                ts = int(dt_utc.timestamp())
+
+                                b_pct = round((b / 255.0) * 100, 1) if b is not None else 80.0
+                                c_val = c if c is not None else 4000
+
+                                # 录入模型自适应学习
+                                grp.model.learn(
+                                    hour_float=h_float,
+                                    actual_brightness=b_pct,
+                                    actual_color_temp=c_val,
+                                    actual_count=1
+                                )
+
+                                # 写入本地历史时序库供图表渲染
+                                self.db.record_light_state(
+                                    entity_id=ent,
+                                    brightness=b_pct,
+                                    color_temp=c_val,
+                                    state="on",
+                                    timestamp=ts
+                                )
+                                ent_on_samples += 1
+                            except Exception as ex:
+                                logger.debug(f"解析历史状态异常: {ex}")
+
+                grp_samples += ent_on_samples
+                entity_stats[ent] = ent_on_samples
+
+            grp.model.save_profile()
+            total_samples += grp_samples
+
+        add_log(f"历史回溯学习完成！共导入 {total_samples} 条真实光照样本，已更新自适应基线曲线。")
+        return {
+            "ok": True,
+            "days": days,
+            "total_samples": total_samples,
+            "entity_stats": entity_stats
+        }
 
     def get_current_time(self) -> datetime:
         return datetime.now(self.tz) + timedelta(seconds=self.time_offset_seconds)

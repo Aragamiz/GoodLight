@@ -321,9 +321,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
   <div class="header">
-    <div class="title">🌟 GoodLight 控制面板</div>
+    <div class="title" id="page-title">🌟 GoodLight 控制面板</div>
     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-      <button class="btn-action" style="border-color: var(--primary); color: var(--primary); font-weight: 600;" onclick="openWizard()">🚀 启动与配置向导</button>
+      <button class="btn-action" id="btn-lang-toggle" onclick="toggleLanguage()" style="font-weight: 600; border-color: var(--primary); color: var(--primary);">🌐 English</button>
+      <button class="btn-action" id="btn-open-wizard" style="border-color: var(--primary); color: var(--primary); font-weight: 600;" onclick="openWizard()">🚀 启动与配置向导</button>
       <div id="sim-time-badge" style="font-size: 13px; color: var(--accent);">时间: --:--:--</div>
       <div class="badge" id="status-badge">● 正在运行</div>
     </div>
@@ -332,13 +333,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <!-- 预装启动与配置向导模态弹窗 -->
   <div id="wizard-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
-      <!-- 步骤指示器 -->
-      <div class="wizard-steps">
-        <div class="step-item active" id="step-nav-1"><span class="step-num">1</span> 欢迎</div>
-        <div class="step-item" id="step-nav-2"><span class="step-num">2</span> 填写令牌</div>
-        <div class="step-item" id="step-nav-3"><span class="step-num">3</span> 加入灯组</div>
-        <div class="step-item" id="step-nav-4"><span class="step-num">4</span> 补足信息</div>
-        <div class="step-item" id="step-nav-5"><span class="step-num">5</span> 完成启动</div>
+      <!-- 步骤指示器与语言切换 -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div class="wizard-steps" style="margin-bottom: 0; flex: 1;">
+          <div class="step-item active" id="step-nav-1"><span class="step-num">1</span> <span id="nav-text-1">欢迎</span></div>
+          <div class="step-item" id="step-nav-2"><span class="step-num">2</span> <span id="nav-text-2">填写令牌</span></div>
+          <div class="step-item" id="step-nav-3"><span class="step-num">3</span> <span id="nav-text-3">加入灯组</span></div>
+          <div class="step-item" id="step-nav-4"><span class="step-num">4</span> <span id="nav-text-4">补足信息</span></div>
+          <div class="step-item" id="step-nav-5"><span class="step-num">5</span> <span id="nav-text-5">完成启动</span></div>
+        </div>
+        <button class="btn-action" id="btn-wiz-lang" onclick="toggleLanguage()" style="margin-left: 12px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-color: var(--primary); color: var(--primary);">🌐 English</button>
       </div>
 
       <!-- Step 1: 欢迎界面 GoodLight -->
@@ -411,8 +415,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           系统已自主识别出全屋灯具，请选择各灯具归属的自适应控制分组（不需要托管的灯可设为“不纳入托管”）：
         </div>
 
-        <div id="wiz-lights-list" style="max-height: 380px; overflow-y: auto; padding-right: 4px; margin-bottom: 20px;">
+        <div id="wiz-lights-list" style="max-height: 380px; overflow-y: auto; padding-right: 4px; margin-bottom: 14px;">
           <div style="color: var(--subtext); text-align: center; padding: 30px;">正在扫描或未连接，请先返回第二步测试连接...</div>
+        </div>
+
+        <!-- 历史回溯学习功能 -->
+        <div style="background: #090e1a; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;">
+          <label style="font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="wiz-sync-history-toggle" checked style="width: 16px; height: 16px;">
+            <span id="txt-wiz-sync-title">🔄 自动从 Home Assistant 历史数据库回溯学习光照习惯 (过去 14 天)</span>
+          </label>
+          <div style="font-size: 12px; color: var(--subtext); margin-top: 6px; margin-left: 24px; line-height: 1.5;" id="txt-wiz-sync-desc">
+            直接读取所选灯具在 Home Assistant 中的真实历史调光与色温样本，瞬间生成个性化自适应昼夜曲线，无需从零等待数周日常学习。
+          </div>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px;">
@@ -514,6 +529,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div><strong style="color: var(--primary);">自适应托管灯组:</strong> <span id="summary-groups">--</span></div>
           <div><strong style="color: var(--primary);">地理坐标与时区:</strong> <span id="summary-loc">--</span></div>
           <div><strong style="color: var(--primary);">全球气象与温度感知:</strong> <span id="summary-weather">--</span></div>
+          <div><strong style="color: var(--primary);" id="summary-lbl-history">HA 历史数据回溯:</strong> <span id="summary-history">已启用 (从过去 14 天记录回溯)</span></div>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px;">
@@ -559,13 +575,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <div class="grid">
     <div class="card">
-      <div class="card-title">天体与节气感知 <span>☀️</span></div>
+      <div class="card-title"><span id="card-title-solar">天体与节气感知</span> <span>☀️</span></div>
       <div class="stat-val" id="solar-term">--</div>
       <div class="stat-sub" id="solar-elevation">太阳高度角: --°</div>
       <div class="stat-sub" id="weather-line" style="color: var(--primary); margin-top: 4px;">⛅ 实时气象: 获取中...</div>
     </div>
     <div class="card">
-      <div class="card-title">分组选择与预测 <span>💡</span></div>
+      <div class="card-title"><span id="card-title-group">分组选择与预测</span> <span>💡</span></div>
       <div style="margin-bottom: 8px;">
         <select id="group-select" onchange="onGroupChange(this.value)"></select>
       </div>
@@ -573,12 +589,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="stat-sub" id="predict-count">建议开灯数: -- 盏</div>
     </div>
     <div class="card">
-      <div class="card-title">系统性能占用 <span>⚡</span></div>
+      <div class="card-title"><span id="card-title-perf">系统性能占用</span> <span>⚡</span></div>
       <div class="stat-val" id="proc-cpu">CPU: --%</div>
       <div class="stat-sub" id="proc-mem">内存: -- MB | 运行: --</div>
     </div>
     <div class="card">
-      <div class="card-title">当前分组灯具 <span>🎛️</span></div>
+      <div class="card-title"><span id="card-title-current">当前分组灯具</span> <span>🎛️</span></div>
       <div class="stat-val" style="font-size: 16px;" id="current-group-name">--</div>
       <div class="stat-sub" id="current-group-lights">--</div>
     </div>
@@ -587,7 +603,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <!-- 性能时序曲线图 -->
   <div class="card">
     <div class="card-title">
-      <span>系统性能时序曲线 (CPU % & 内存占用)</span>
+      <span id="card-title-perf-chart">系统性能时序曲线 (CPU % & 内存占用)</span>
       <div class="range-selector">
         <button class="range-btn active" onclick="changePerfRange(1, this)">1小时</button>
         <button class="range-btn" onclick="changePerfRange(24, this)">24小时</button>
@@ -605,22 +621,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <!-- 运行日志 -->
   <div class="card">
-    <div class="card-title">实时运行与学习日志 <span>📋</span></div>
+    <div class="card-title"><span id="card-title-logs">实时运行与学习日志</span> <span>📋</span></div>
     <div class="log-box" id="log-box"></div>
   </div>
 
   <!-- 24小时自适应偏好曲线表 -->
   <div class="card">
-    <div class="card-title"><span id="table-title">当前分组 24小时自适应曲线</span> <span>📈</span></div>
+    <div class="card-title">
+      <span id="table-title">当前分组 24小时自适应曲线</span>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button class="btn-action" style="padding: 4px 10px; font-size: 12px; border-color: var(--primary); color: var(--primary);" onclick="triggerSyncHAHistory(14)" id="btn-sync-history-dash">🔄 从 HA 历史回溯学习曲线 (14天)</button>
+        <span>📈</span>
+      </div>
+    </div>
     <div style="max-height: 200px; overflow-y: auto;">
       <table class="curve-table">
         <thead>
           <tr>
-            <th>时间点</th>
-            <th>学习亮度</th>
-            <th>学习色温</th>
-            <th>协同开灯数</th>
-            <th>调教样本数</th>
+            <th id="th-time">时间点</th>
+            <th id="th-bright">学习亮度</th>
+            <th id="th-cct">学习色温</th>
+            <th id="th-count">协同开灯数</th>
+            <th id="th-samples">调教样本数</th>
           </tr>
         </thead>
         <tbody id="curve-tbody"></tbody>
@@ -633,6 +655,148 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let discoveredLights = [];
     let lightGroupAssignments = {};
     let existingConfig = {};
+    let currentLang = 'zh';
+
+    const I18N = {
+      zh: {
+        pageTitle: "🌟 GoodLight 控制面板",
+        langBtn: "🌐 English",
+        openWizard: "🚀 启动与配置向导",
+        running: "● 正在运行",
+        cardSolar: "天体与节气感知",
+        cardGroup: "分组选择与预测",
+        cardPerf: "系统性能占用",
+        cardCurrent: "当前分组灯具",
+        cardPerfChart: "系统性能时序曲线 (CPU % & 内存占用)",
+        cardLogs: "实时运行与学习日志",
+        tableTitle: "24小时自适应曲线",
+        btnSyncHistoryDash: "🔄 从 HA 历史回溯学习曲线 (14天)",
+        thTime: "时间点",
+        thBright: "学习亮度",
+        thCct: "学习色温",
+        thCount: "协同开灯数",
+        thSamples: "调教样本数",
+        nav1: "欢迎",
+        nav2: "填写令牌",
+        nav3: "加入灯组",
+        nav4: "补足信息",
+        nav5: "完成启动",
+        txtWizSyncTitle: "🔄 自动从 Home Assistant 历史数据库回溯学习光照习惯 (过去 14 天)",
+        txtWizSyncDesc: "直接读取所选灯具在 Home Assistant 中的真实历史调光与色温样本，瞬间生成个性化自适应昼夜曲线，无需从零等待数周日常学习。"
+      },
+      en: {
+        pageTitle: "🌟 GoodLight Dashboard",
+        langBtn: "🌐 中文",
+        openWizard: "🚀 Setup Wizard",
+        running: "● Running",
+        cardSolar: "Solar & Seasonal Terms",
+        cardGroup: "Group Target & Prediction",
+        cardPerf: "System Performance",
+        cardCurrent: "Active Group Lights",
+        cardPerfChart: "System Performance Timeline (CPU % & RAM)",
+        cardLogs: "Live Cruise & Learning Logs",
+        tableTitle: "24-Hour Adaptive Curve Profile",
+        btnSyncHistoryDash: "🔄 Sync HA History (14 Days)",
+        thTime: "Time",
+        thBright: "Learned Brightness",
+        thCct: "Learned CCT",
+        thCount: "Active Lights",
+        thSamples: "Samples",
+        nav1: "Welcome",
+        nav2: "Token",
+        nav3: "Group Lights",
+        nav4: "Location & Weather",
+        nav5: "Launch",
+        txtWizSyncTitle: "🔄 Auto-Backfill Learning from Home Assistant History (Past 14 Days)",
+        txtWizSyncDesc: "Directly parses your past 14 days of lighting adjustments from HA to bootstrap your personalized circadian curves instantly without waiting for weeks."
+      }
+    };
+
+    function toggleLanguage() {
+      setLanguage(currentLang === 'zh' ? 'en' : 'zh');
+    }
+
+    async function setLanguage(lang) {
+      currentLang = lang;
+      localStorage.setItem('goodlight_lang', lang);
+      applyTranslations();
+      try {
+        await fetch('/api/control/language', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ language: lang })
+        });
+      } catch (e) {}
+    }
+
+    function applyTranslations() {
+      const t = I18N[currentLang] || I18N.zh;
+      const el = (id, text) => { const node = document.getElementById(id); if (node) node.innerText = text; };
+
+      el('page-title', t.pageTitle);
+      el('btn-lang-toggle', t.langBtn);
+      el('btn-wiz-lang', t.langBtn);
+      el('btn-open-wizard', t.openWizard);
+      el('status-badge', t.running);
+
+      el('card-title-solar', t.cardSolar);
+      el('card-title-group', t.cardGroup);
+      el('card-title-perf', t.cardPerf);
+      el('card-title-current', t.cardCurrent);
+      el('card-title-perf-chart', t.cardPerfChart);
+      el('card-title-logs', t.cardLogs);
+      el('btn-sync-history-dash', t.btnSyncHistoryDash);
+
+      el('th-time', t.thTime);
+      el('th-bright', t.thBright);
+      el('th-cct', t.thCct);
+      el('th-count', t.thCount);
+      el('th-samples', t.thSamples);
+
+      el('nav-text-1', t.nav1);
+      el('nav-text-2', t.nav2);
+      el('nav-text-3', t.nav3);
+      el('nav-text-4', t.nav4);
+      el('nav-text-5', t.nav5);
+
+      el('txt-wiz-sync-title', t.txtWizSyncTitle);
+      el('txt-wiz-sync-desc', t.txtWizSyncDesc);
+    }
+
+    async function triggerSyncHAHistory(days) {
+      const btn = document.getElementById('btn-sync-history-dash');
+      const originalText = btn ? btn.innerText : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = (currentLang === 'en') ? '⏳ Syncing HA History...' : '⏳ 正在从 HA 回溯历史...';
+      }
+
+      try {
+        const resp = await fetch('/api/setup/sync_ha_history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ days: days || 14 })
+        });
+        const res = await resp.json();
+        if (res.ok) {
+          const msg = (currentLang === 'en')
+            ? `🎉 Successfully synced from Home Assistant! Imported ${res.total_samples} samples across past ${res.days} days.`
+            : `🎉 成功从 Home Assistant 历史回溯学习！过去 ${res.days} 天共提取到 ${res.total_samples} 条真实样本，自适应曲线已完成校准更新。`;
+          alert(msg);
+          await updateDashboard();
+          await updateLightData();
+        } else {
+          alert(((currentLang === 'en') ? 'Sync failed: ' : '回溯失败: ') + (res.message || 'Error'));
+        }
+      } catch (e) {
+        alert(((currentLang === 'en') ? 'Sync request error: ' : '请求异常: ') + e.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = originalText;
+        }
+      }
+    }
 
     function openWizard() {
       document.getElementById('wizard-modal').style.display = 'flex';
@@ -680,6 +844,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (data.timezone_offset) document.getElementById('wiz-tz').value = data.timezone_offset.toFixed(1);
         if (data.weather_enabled !== undefined) {
           document.getElementById('wiz-weather-toggle').checked = !!data.weather_enabled;
+        }
+        if (data.ui_language) {
+          setLanguage(data.ui_language);
         }
         previewWeatherForCoords();
 
@@ -954,12 +1121,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       document.getElementById('summary-groups').innerText = `${assignedEnts.length} 盏灯具分配在 ${groupsFound.size} 个独立受控组中`;
       document.getElementById('summary-loc').innerText = `纬度: ${lat}°, 经度: ${lng}°, 时区: UTC+${tz}`;
       document.getElementById('summary-weather').innerText = weatherOn ? '已启用 (基于 Open-Meteo 实时气温与云量双重光补偿)' : '已停用';
+
+      const syncHistoryOn = document.getElementById('wiz-sync-history-toggle') ? document.getElementById('wiz-sync-history-toggle').checked : false;
+      const historySummaryEl = document.getElementById('summary-history');
+      if (historySummaryEl) {
+        historySummaryEl.innerText = syncHistoryOn ? ((currentLang === 'en') ? 'Enabled (Backfill from past 14 days)' : '已启用 (从过去 14 天记录回溯训练)') : ((currentLang === 'en') ? 'Disabled' : '已跳过');
+      }
     }
 
     async function finishWizard() {
       const finishBtn = document.getElementById('btn-wiz-finish');
       finishBtn.disabled = true;
-      finishBtn.innerText = '⏳ 正在保存配置并重启引擎...';
+      finishBtn.innerText = (currentLang === 'en') ? '⏳ Saving configuration...' : '⏳ 正在保存配置并重启引擎...';
 
       const ha_url = document.getElementById('wiz-ha-url').value.trim();
       const ha_token = document.getElementById('wiz-ha-token').value.trim();
@@ -998,6 +1171,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         longitude: lng,
         timezone_offset: tz,
         weather_enabled: weather_enabled,
+        ui_language: currentLang,
         groups: activeGroups.length > 0 ? activeGroups : existingConfig.groups
       };
 
@@ -1009,19 +1183,40 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         });
         const res = await resp.json();
         if (res.ok) {
-          alert('🎉 GoodLight 启动向导配置已保存成功！自适应光照引擎已就绪。');
+          const syncHist = document.getElementById('wiz-sync-history-toggle') ? document.getElementById('wiz-sync-history-toggle').checked : false;
+          if (syncHist) {
+            try {
+              finishBtn.innerText = (currentLang === 'en') ? '⏳ Backfilling history from HA...' : '⏳ 正在从 Home Assistant 提取历史光照记录...';
+              const hResp = await fetch('/api/setup/sync_ha_history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ days: 14 })
+              });
+              const hRes = await hResp.json();
+              if (hRes.ok) {
+                const msg = (currentLang === 'en')
+                  ? `🎉 GoodLight launched! Imported ${hRes.total_samples} historical samples from HA.`
+                  : `🎉 GoodLight 启动向导已保存！并已成功从 Home Assistant 回溯学习了 ${hRes.total_samples} 条真实光照历史！`;
+                alert(msg);
+              }
+            } catch (ex) {
+              console.error('History sync error:', ex);
+            }
+          } else {
+            alert((currentLang === 'en') ? '🎉 GoodLight configuration saved successfully!' : '🎉 GoodLight 启动向导配置已保存成功！自适应光照引擎已就绪。');
+          }
           closeWizard();
           await updateDashboard();
           await updatePerfData();
           await updateLightData();
         } else {
-          alert('保存配置失败: ' + (res.message || '未知错误'));
+          alert(((currentLang === 'en') ? 'Save failed: ' : '保存配置失败: ') + (res.message || '未知错误'));
         }
       } catch (e) {
-        alert('请求保存异常: ' + e.message);
+        alert(((currentLang === 'en') ? 'Save error: ' : '请求保存异常: ') + e.message);
       } finally {
         finishBtn.disabled = false;
-        finishBtn.innerText = '🎉 保存并启动 GoodLight 自适应巡航';
+        finishBtn.innerText = (currentLang === 'en') ? '🎉 Save & Launch GoodLight Cruise' : '🎉 保存并启动 GoodLight 自适应巡航';
       }
     }
 
@@ -1237,8 +1432,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       document.getElementById('current-group-name').innerText = g.name;
       document.getElementById('current-group-lights').innerText = g.lights.join(', ');
       document.getElementById('predict-target').innerText = `${g.prediction.brightness}% / ${g.prediction.color_temp}K`;
-      document.getElementById('predict-count').innerText = `建议开启灯具: ${g.prediction.light_count} 盏`;
-      document.getElementById('table-title').innerText = `[${g.name}] 24小时自适应曲线`;
+      document.getElementById('predict-count').innerText = (currentLang === 'en' ? 'Recommended Active: ' : '建议开启灯具: ') + `${g.prediction.light_count} ` + (currentLang === 'en' ? 'lights' : '盏');
+      document.getElementById('table-title').innerText = `[${g.name}] ` + (currentLang === 'en' ? '24-Hour Adaptive Curve' : '24小时自适应曲线');
 
       let currentHour = new Date().getHours();
       if (serverCurrentTimeStr) {
@@ -1255,12 +1450,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const isCurrent = (h === currentHour);
         const tr = document.createElement('tr');
         if (isCurrent) tr.className = 'highlight-row';
+        const curLabel = isCurrent ? (currentLang === 'en' ? '👈 (Now)' : '👈 (当前)') : '';
+        const unit = currentLang === 'en' ? 'lights' : '盏';
+        const times = currentLang === 'en' ? 'samples' : '次';
         tr.innerHTML = `
-          <td>${h.toString().padStart(2, '0')}:00 ${isCurrent ? '👈 (当前)' : ''}</td>
+          <td>${h.toString().padStart(2, '0')}:00 ${curLabel}</td>
           <td>${item.brightness || '--'}%</td>
           <td>${item.color_temp || '--'}K</td>
-          <td>${item.light_count || 1} 盏</td>
-          <td>${item.samples_count || 0} 次</td>
+          <td>${item.light_count || 1} ${unit}</td>
+          <td>${item.samples_count || 0} ${times}</td>
         `;
         tbody.appendChild(tr);
       }
@@ -1271,26 +1469,40 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const resp = await fetch('/api/status');
         const data = await resp.json();
 
+        if (!localStorage.getItem('goodlight_lang') && data.ui_language && data.ui_language !== currentLang) {
+          setLanguage(data.ui_language);
+        }
+
         serverCurrentTimeStr = data.time.current_time;
-        document.getElementById('sim-time-badge').innerText = `当前系统时间: ${data.time.current_time} (UTC${data.time.timezone_offset>=0?'+':''}${data.time.timezone_offset})`;
+        const timePrefix = currentLang === 'en' ? 'System Time: ' : '当前系统时间: ';
+        document.getElementById('sim-time-badge').innerText = `${timePrefix}${data.time.current_time} (UTC${data.time.timezone_offset>=0?'+':''}${data.time.timezone_offset})`;
         document.getElementById('tz-select').value = data.time.timezone_offset.toFixed(1);
 
-        document.getElementById('solar-term').innerText = `${data.solar.term} (进度: ${(data.solar.term_progress * 100).toFixed(0)}%)`;
-        document.getElementById('solar-elevation').innerText = `太阳高度角: ${data.solar.elevation.toFixed(1)}° | 季节因子: ${data.solar.season_factor.toFixed(2)}`;
+        const progLabel = currentLang === 'en' ? 'Progress' : '进度';
+        document.getElementById('solar-term').innerText = `${data.solar.term} (${progLabel}: ${(data.solar.term_progress * 100).toFixed(0)}%)`;
+        const elevLabel = currentLang === 'en' ? 'Solar Elevation: ' : '太阳高度角: ';
+        const seasonLabel = currentLang === 'en' ? 'Season Factor: ' : '季节因子: ';
+        document.getElementById('solar-elevation').innerText = `${elevLabel}${data.solar.elevation.toFixed(1)}° | ${seasonLabel}${data.solar.season_factor.toFixed(2)}`;
 
         const weatherLine = document.getElementById('weather-line');
         if (weatherLine) {
           if (data.weather && data.weather.enabled && data.weather.temperature !== null) {
-            weatherLine.innerText = `⛅ 实时气象: ${data.weather.weather_desc} | 气温: ${data.weather.temperature}°C (体感: ${data.weather.apparent_temperature}°C) | 云量: ${data.weather.cloud_cover}%`;
+            const wLabel = currentLang === 'en' ? 'Live Weather: ' : '实时气象: ';
+            const tempLabel = currentLang === 'en' ? 'Temp: ' : '气温: ';
+            const feelsLabel = currentLang === 'en' ? 'Feels: ' : '体感: ';
+            const cloudLabel = currentLang === 'en' ? 'Clouds: ' : '云量: ';
+            weatherLine.innerText = `⛅ ${wLabel}${data.weather.weather_desc} | ${tempLabel}${data.weather.temperature}°C (${feelsLabel}${data.weather.apparent_temperature}°C) | ${cloudLabel}${data.weather.cloud_cover}%`;
           } else if (data.weather && !data.weather.enabled) {
-            weatherLine.innerText = `⛅ 实时气象: 未启用环境气象感知`;
+            weatherLine.innerText = currentLang === 'en' ? '⛅ Live Weather: Disabled' : '⛅ 实时气象: 未启用环境气象感知';
           } else {
-            weatherLine.innerText = `⛅ 实时气象: 正在同步中...`;
+            weatherLine.innerText = currentLang === 'en' ? '⛅ Live Weather: Syncing...' : '⛅ 实时气象: 正在同步中...';
           }
         }
 
         document.getElementById('proc-cpu').innerText = `CPU: ${data.process.cpu_percent}%`;
-        document.getElementById('proc-mem').innerText = `物理内存: ${data.process.mem_rss_mb} MB | 虚拟内存: ${data.process.mem_vms_mb} MB | 运行: ${data.process.uptime}`;
+        const memLabel = currentLang === 'en' ? 'RAM: ' : '物理内存: ';
+        const uptimeLabel = currentLang === 'en' ? 'Uptime: ' : '运行: ';
+        document.getElementById('proc-mem').innerText = `${memLabel}${data.process.mem_rss_mb} MB | ${uptimeLabel}${data.process.uptime}`;
 
         // 分组下拉框更新
         groupsData = data.groups;
@@ -1303,7 +1515,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         for (const [gid, ginfo] of Object.entries(groupsData)) {
           const opt = document.createElement('option');
           opt.value = gid;
-          opt.innerText = `${ginfo.name} (${ginfo.lights.length} 盏灯)`;
+          const lightsSuffix = currentLang === 'en' ? 'lights' : '盏灯';
+          opt.innerText = `${ginfo.name} (${ginfo.lights.length} ${lightsSuffix})`;
           if (gid === selectedGroupId) opt.selected = true;
           gSelect.appendChild(opt);
         }
@@ -1324,8 +1537,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (debugDetails) {
         debugDetails.addEventListener('toggle', function() {
           const icon = document.getElementById('debug-toggle-icon');
-          if (icon) icon.innerText = this.open ? '收起 ▲' : '展开 ▼';
+          if (icon) icon.innerText = this.open ? (currentLang === 'en' ? 'Collapse ▲' : '收起 ▲') : (currentLang === 'en' ? 'Expand ▼' : '展开 ▼');
         });
+      }
+      const savedLang = localStorage.getItem('goodlight_lang');
+      if (savedLang) {
+        setLanguage(savedLang);
       }
       await updateDashboard();
       await updatePerfData();
@@ -1352,12 +1569,14 @@ class WebPanel:
         self.app.router.add_get("/api/history/perf", self.handle_api_history_perf)
         self.app.router.add_get("/api/history/lights", self.handle_api_history_lights)
         self.app.router.add_post("/api/control/timezone", self.handle_control_timezone)
+        self.app.router.add_post("/api/control/language", self.handle_control_language)
         self.app.router.add_post("/api/control/time_adjust", self.handle_control_time_adjust)
         self.app.router.add_post("/api/control/time_reset", self.handle_control_time_reset)
         self.app.router.add_post("/api/setup/test_connection", self.handle_api_setup_test)
         self.app.router.add_get("/api/setup/discover_lights", self.handle_api_setup_discover)
         self.app.router.add_get("/api/setup/geocode", self.handle_api_setup_geocode)
         self.app.router.add_get("/api/setup/current_config", self.handle_api_setup_get_config)
+        self.app.router.add_post("/api/setup/sync_ha_history", self.handle_api_setup_sync_history)
         self.app.router.add_post("/api/setup/save", self.handle_api_setup_save)
         self._last_cpu_time = 0.0
         self._last_sample_time = time.time()
@@ -1451,9 +1670,16 @@ class WebPanel:
             "weather": self.service.weather.get_summary() if hasattr(self.service, "weather") else {},
             "process": proc_stats,
             "groups": groups_dict,
-            "logs": list(LOG_BUFFER)
+            "logs": list(LOG_BUFFER),
+            "ui_language": getattr(self.service, "ui_language", "zh")
         }
         return web.json_response(data)
+
+    async def handle_control_language(self, request):
+        req_data = await request.json()
+        lang = req_data.get("language", "zh")
+        self.service.set_ui_language(lang)
+        return web.json_response({"ok": True, "language": lang})
 
     async def handle_control_timezone(self, request):
         req_data = await request.json()
@@ -1557,8 +1783,18 @@ class WebPanel:
             "longitude": loc_cfg.get("longitude", 116.4074),
             "timezone_offset": self.service.tz_offset,
             "weather_enabled": self.service.weather.enabled if hasattr(self.service, "weather") else True,
+            "ui_language": getattr(self.service, "ui_language", "zh"),
             "groups": cfg.get("groups", [])
         })
+
+    async def handle_api_setup_sync_history(self, request):
+        try:
+            req_data = await request.json()
+            days = int(req_data.get("days", 14))
+            res = await self.service.sync_history_from_ha(days=days)
+            return web.json_response(res)
+        except Exception as e:
+            return web.json_response({"ok": False, "message": str(e)})
 
     async def handle_api_setup_save(self, request):
         try:

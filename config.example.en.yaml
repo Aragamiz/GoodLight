@@ -1,0 +1,63 @@
+# GoodLight Configuration Template (English)
+# Copy this file to config.yaml and customize for your home.
+
+ui_language: "en"  # UI language: "en" for English, "zh" for Chinese
+
+home_assistant:
+  # Home Assistant API URL
+  url: "http://homeassistant.local:8123"
+  # Long-Lived Access Token (or pass via GOODLIGHT_HA_TOKEN environment variable)
+  token: "YOUR_HA_LONG_LIVED_ACCESS_TOKEN"
+
+location:
+  # Geographical coordinates (used for exact solar elevation, true solar time, and seasonal factor)
+  latitude: 51.5074     # e.g., London 51.5074, New York 40.7128, Tokyo 35.6895
+  longitude: -0.1278
+  elevation: 0
+  timezone_offset: 0.0  # Timezone offset in hours (e.g. UTC+0 is 0.0, UTC-5 is -5.0, UTC+8 is 8.0)
+
+weather:
+  # Enable global ambient weather & temperature adaptation via Open-Meteo (zero-key, free)
+  enabled: true
+
+# Multi-Group Lighting Orchestration (e.g., Living Room, Bedroom, Study)
+groups:
+  - id: "living_room_main"
+    name: "Living Room Main Ceiling"
+    enabled: true
+    # Model profile persistence file
+    profile_path: "profile_living_room_main.json"
+    # Lights sorted by priority (Primary light triggers first; accents join during peak illumination)
+    lights:
+      - entity_id: "light.living_room_ceiling"
+        name: "Ceiling Main Light"
+        priority: 1
+        min_kelvin: 2700
+        max_kelvin: 6500
+
+  - id: "living_room_ambient"
+    name: "Living Room Ambient Lightstrip"
+    enabled: true
+    profile_path: "profile_living_room_ambient.json"
+    lights:
+      - entity_id: "light.living_room_strip"
+        name: "TV Backlight Strip"
+        priority: 2
+        min_kelvin: 2500
+        max_kelvin: 6500
+
+  - id: "desk_lamp"
+    name: "Study Desk Lamp"
+    enabled: true
+    profile_path: "profile_desk_lamp.json"
+    lights:
+      - entity_id: "light.study_desk_lamp"
+        name: "Smart Desk Lamp"
+        priority: 1
+        min_kelvin: 2700
+        max_kelvin: 6500
+
+learning:
+  take_over_learn: true   # Learn user manual adjustments from wall switches / HA UI
+  learning_rate: 0.25     # Exponential moving average (EMA) learning rate
+  debounce_seconds: 3.0   # Debounce window for manual light adjustment stabilization

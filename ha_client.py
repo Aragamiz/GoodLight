@@ -10,6 +10,7 @@ GoodLight 异步 WebSocket 客户端与事件引擎
 import asyncio
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, Any, List
 import aiohttp
 
@@ -197,4 +198,28 @@ class HAClient:
                     return {"ok": False, "message": f"连接返回状态码 {resp.status}"}
         except Exception as e:
             return {"ok": False, "message": f"无法连接到 Home Assistant: {str(e)}"}
+
+    async def get_entity_history(self, entity_id: str, days: int = 14) -> List[Dict[str, Any]]:
+        """获取指定灯具在 Home Assistant 中的历史状态记录 (支持自动回溯天数降级)"""
+        await self.ensure_session()
+        headers = {"Authorization": f"Bearer {self.token}"}
+
+        # 尝试请求天数；如果HA录制器保留天数较短导致返回空，依次降级尝试
+        day_candidates = [days]
+        for fallback in [7, 3, 1]:
+            if fallback < days:
+                day_candidates.append(fallback)
+
+        for d in day_candidates:
+            start_time = (datetime.now(timezone.utc) - timedelta(days=d)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            url = f"{self.base_url}/api/history/period/{start_time}?filter_entity_id={entity_id}"
+            try:
+                async with self.session.get(url, headers=headers, timeout=12) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data and isinstance(data, list) and len(data) > 0:
+                            return data[0]
+            except Exception as e:
+                logger.debug(f"获取 {entity_id} {d}天历史异常: {e}")
+        return []
 

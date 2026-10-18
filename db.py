@@ -51,6 +51,18 @@ class HistoryDB:
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_light_ts ON light_history(timestamp);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_light_ent ON light_history(entity_id);")
+            try:
+                conn.execute("""
+                    DELETE FROM light_history 
+                    WHERE id NOT IN (
+                        SELECT MIN(id) 
+                        FROM light_history 
+                        GROUP BY entity_id, timestamp
+                    );
+                """)
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_light_unique ON light_history(entity_id, timestamp);")
+            except Exception:
+                pass
 
     def record_metrics(self, cpu: float, rss_mb: float, vms_mb: float):
         now_ts = int(time.time())
@@ -60,11 +72,11 @@ class HistoryDB:
                 (now_ts, cpu, rss_mb, vms_mb)
             )
 
-    def record_light_state(self, entity_id: str, brightness: float, color_temp: int, state: str):
-        now_ts = int(time.time())
+    def record_light_state(self, entity_id: str, brightness: float, color_temp: int, state: str, timestamp: int = None):
+        now_ts = int(timestamp) if timestamp is not None else int(time.time())
         with self.get_conn() as conn:
             conn.execute(
-                "INSERT INTO light_history (timestamp, entity_id, brightness, color_temp, state) VALUES (?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO light_history (timestamp, entity_id, brightness, color_temp, state) VALUES (?, ?, ?, ?, ?)",
                 (now_ts, entity_id, brightness, color_temp, state)
             )
 

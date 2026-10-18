@@ -73,6 +73,10 @@ class GoodLightModel:
         except Exception as e:
             print(f"[Model] 保存偏好失败: {e}")
 
+    def save(self):
+        """保存模型状态到磁盘 (save_profile 别名)"""
+        self.save_profile()
+
     def predict(self, hour_float: float, solar_elevation: float, season_factor: float, temp_celsius: float = None, cloud_cover: int = None) -> Dict[str, Any]:
         """
         根据当前状态预测：
@@ -131,6 +135,10 @@ class GoodLightModel:
             "color_temp": final_color_temp,
             "light_count": final_count
         }
+
+    def learn(self, hour_float: float, actual_brightness: float = None, actual_color_temp: int = None, actual_count: int = None, learning_rate: float = 0.25):
+        """通用自适应学习接口 (learn_user_adjustment 别名)"""
+        return self.learn_user_adjustment(hour_float, actual_brightness, actual_color_temp, actual_count, learning_rate)
 
     def learn_user_adjustment(self, hour_float: float, actual_brightness: float = None, actual_color_temp: int = None, actual_count: int = None, learning_rate: float = 0.25):
         """
