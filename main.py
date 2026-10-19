@@ -1,6 +1,9 @@
 """
-GoodLight 守护服务核心主程序 (支持多灯光独立分组与动态时区调节)
+GoodLight Core Daemon Service.
+Supports independent multi-group circadian lighting and dynamic timezone/simulation adjustments.
 """
+
+__version__ = "0.1.0"
 
 import os
 import time
@@ -8,7 +11,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 
-# 默认设置上海/北京时区 (UTC+8)，确保 Linux Docker 环境中 localtime 与日志时间对齐
+# Default to Asia/Shanghai (UTC+8) if TZ not specified, ensuring container log time alignment
 if "TZ" not in os.environ:
     os.environ["TZ"] = "Asia/Shanghai"
 if hasattr(time, "tzset"):
@@ -29,7 +32,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger("GoodLight.Core")
 
 class LightGroup:
-    """独立的灯光受控组，每个组拥有独立模型和灯具优先级"""
+    """Independent lighting control group with its own adaptive model and priority queue."""
     def __init__(self, group_dict: dict, base_dir: str = "."):
         self.id = group_dict.get("id", "default")
         self.name = group_dict.get("name", "Light Group")
@@ -44,7 +47,7 @@ class GoodLightService:
     def __init__(self, config_path: str = "config.yaml"):
         self.config_path = config_path
         if not os.path.exists(config_path) and os.path.exists("config.example.yaml"):
-            logger.warning(f"未找到 {config_path}，使用 config.example.yaml 默认模板")
+            logger.warning(f"Config {config_path} not found, falling back to config.example.yaml")
             self.config_path = "config.example.yaml"
 
         with open(self.config_path, "r", encoding="utf-8") as f:
@@ -54,7 +57,7 @@ class GoodLightService:
         loc_cfg = self.cfg["location"]
         
         self.tz_offset = float(loc_cfg.get("timezone_offset", 8.0))
-        self.time_offset_seconds = 0  # 允许在 Panel 中微调时间偏移量 (秒)
+        self.time_offset_seconds = 0  # Simulation clock offset in seconds
         self.tz = timezone(timedelta(hours=self.tz_offset))
         self.ui_language = self.cfg.get("ui_language", "zh")
 
@@ -66,18 +69,26 @@ class GoodLightService:
             longitude=loc_cfg["longitude"],
             tz_offset_hours=self.tz_offset
         )
+        self.client = HAClient(base_url=ha_url, token=ha_token)
         self.weather = WeatherService(
             lat=loc_cfg.get("latitude", 39.9042),
             lon=loc_cfg.get("longitude", 116.4074),
-            enabled=self.cfg.get("weather", {}).get("enabled", True)
+            enabled=self.cfg.get("weather", {}).get("enabled", True),
+            provider=self.cfg.get("weather", {}).get("provider", "auto"),
+            log_callback=add_log
         )
-        self.client = HAClient(base_url=ha_url, token=ha_token)
+        self.weather.set_ha_client(self.client)
+        self.season_factor_override: Optional[float] = None
+        self.weather_factor_override: Optional[float] = None
+
         self.db = HistoryDB(db_path="history.db")
         self.ignore_updates = set()
         self.light_states: dict[str, dict] = {}
         self.last_manual_adjust: dict[str, float] = {}
+        self.last_command_time: dict[str, float] = {}
+        self.last_command_brightness: dict[str, float] = {}
 
-        # 初始化分组
+        # Initialize lighting groups
         self.groups: dict[str, LightGroup] = {}
         self.entity_to_group: dict[str, LightGroup] = {}
         self._init_groups()
@@ -85,11 +96,12 @@ class GoodLightService:
         self.web_panel = WebPanel(self, host="0.0.0.0", port=8787)
 
     def update_cached_state(self, entity_id: str, st_data: dict):
+        """Update cached entity attributes, detecting hardware physical capabilities."""
         state_str = st_data.get("state", "off")
         attrs = st_data.get("attributes", {})
         modes = attrs.get("supported_color_modes") or []
 
-        # 识别灯具硬件真实能力
+        # Detect fixture hardware capabilities
         if modes:
             has_b = any(m in modes for m in ["brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww"])
             has_ct = ("color_temp" in modes)
@@ -130,7 +142,8 @@ class GoodLightService:
 
     def get_light_params(self, entity_id: str, target_b_pct: float, target_k: int):
         """
-        根据灯具真实物理能力适配控制参数并约束物理边界
+        Adapt control parameters to physical hardware capabilities and clamp to Kelvin limits.
+        Prevents oscillation caused by commanding out-of-range parameters.
         """
         st = self.light_states.get(entity_id, {})
         has_b = st.get("has_brightness", True)
@@ -165,16 +178,17 @@ class GoodLightService:
         }
 
     def _init_groups(self):
+        """Initialize lighting groups from configuration."""
         self.groups.clear()
         self.entity_to_group.clear()
         
         raw_groups = self.cfg.get("groups")
         if not raw_groups:
-            # 兼容旧单组配置
+            # Backward compatibility for legacy single-group config
             old_group = self.cfg.get("lighting_group", {})
             raw_groups = [{
                 "id": "main_group",
-                "name": old_group.get("name", "默认灯光组"),
+                "name": old_group.get("name", "Default Group"),
                 "enabled": True,
                 "profile_path": "light_profile.json",
                 "lights": old_group.get("lights", [])
@@ -187,26 +201,85 @@ class GoodLightService:
                 self.entity_to_group[ent] = grp
 
     def update_timezone(self, offset_hours: float):
-        """动态更新时区"""
+        """Dynamically update timezone offset."""
         self.tz_offset = offset_hours
         self.tz = timezone(timedelta(hours=offset_hours))
         set_log_tz(self.tz)
         self.cfg["location"]["timezone_offset"] = offset_hours
         self.solar.tz_offset = offset_hours
         self.solar.tz = self.tz
-        add_log(f"时区已更新为: UTC{'+' if offset_hours>=0 else ''}{offset_hours:g}")
+        add_log(f"Timezone updated to: UTC{'+' if offset_hours>=0 else ''}{offset_hours:g}")
 
     def update_time_offset(self, delta_minutes: int):
-        """动态微调模拟时间偏移"""
+        """Dynamically adjust simulation time offset."""
         self.time_offset_seconds += delta_minutes * 60
-        add_log(f"时间偏移量已调整: {self.time_offset_seconds // 60} 分钟")
+        add_log(f"Simulation time offset adjusted: {self.time_offset_seconds // 60} min")
 
     def reset_time_offset(self):
+        """Reset simulation time offset back to real-time system clock."""
         self.time_offset_seconds = 0
-        add_log("时间偏移量已重置为系统实时时间")
+        add_log("Simulation time offset reset to real system clock")
+
+    def get_effective_season_factor(self, dt: datetime = None) -> float:
+        """Return season factor respecting manual override if set [-1.0, 1.0]."""
+        if self.season_factor_override is not None:
+            return max(-1.0, min(1.0, float(self.season_factor_override)))
+        if dt is None:
+            dt = self.get_current_time()
+        return self.solar.get_season_factor(dt)
+
+    def predict_for_group(self, grp: LightGroup, dt: datetime = None) -> dict:
+        """Unified circadian prediction for a lighting group using live or overridden factors."""
+        if dt is None:
+            dt = self.get_current_time()
+        h_float = dt.hour + dt.minute / 60.0 + dt.second / 3600.0
+        elevation = self.solar.get_solar_elevation(dt)
+        season_factor = self.get_effective_season_factor(dt)
+        w_summary = self.weather.get_summary() if self.weather.enabled else {}
+        curr_temp = w_summary.get("apparent_temperature") or w_summary.get("temperature")
+        curr_clouds = w_summary.get("cloud_cover")
+        return grp.model.predict(
+            hour_float=h_float,
+            solar_elevation=elevation,
+            season_factor=season_factor,
+            temp_celsius=curr_temp,
+            cloud_cover=curr_clouds,
+            env_b_factor_override=self.weather_factor_override
+        )
+
+    def set_factors_override(self, season_factor: Optional[float], weather_factor: Optional[float]):
+        """Manually override season and weather factors."""
+        self.season_factor_override = season_factor
+        self.weather_factor_override = weather_factor
+        s_txt = f"{season_factor:.2f}" if season_factor is not None else "自动推算 (Auto)"
+        w_txt = f"{weather_factor:.2f}x" if weather_factor is not None else "自动计算 (Auto)"
+        add_log(f"⚙️ [因子调优] 已更新 -> 季节因子: {s_txt} | 气象补偿倍率: {w_txt}")
+
+    async def set_weather_source(self, provider: str, manual_params: dict = None):
+        """Switch weather source and force immediate refresh."""
+        self.weather.provider = provider
+        if manual_params:
+            if "temp" in manual_params and manual_params["temp"] is not None:
+                self.weather.manual_temp = float(manual_params["temp"])
+            if "apparent_temp" in manual_params and manual_params["apparent_temp"] is not None:
+                self.weather.manual_apparent_temp = float(manual_params["apparent_temp"])
+            if "cloud_cover" in manual_params and manual_params["cloud_cover"] is not None:
+                self.weather.manual_cloud_cover = int(manual_params["cloud_cover"])
+            if "desc" in manual_params and manual_params["desc"]:
+                self.weather.manual_desc = str(manual_params["desc"])
+        if "weather" not in self.cfg:
+            self.cfg["weather"] = {}
+        self.cfg["weather"]["provider"] = provider
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
+        except Exception as e:
+            logger.debug(f"Failed to persist weather config: {e}")
+        add_log(f"⚙️ [气象源切换] 用户切换气象数据源至: {provider}")
+        await self.weather.fetch_weather(force=True)
 
     def save_and_reload_config(self, setup_data: dict) -> bool:
-        """从预装向导保存新配置并热生效"""
+        """Save new configuration from setup wizard and hot-reload engine."""
         try:
             ha_url = setup_data.get("ha_url") or self.cfg["home_assistant"]["url"]
             ha_token = setup_data.get("ha_token") or self.cfg["home_assistant"]["token"]
@@ -228,7 +301,7 @@ class GoodLightService:
             if groups:
                 self.cfg["groups"] = groups
 
-            # 更新天气感知开关
+            # Weather toggle
             weather_enabled = bool(setup_data.get("weather_enabled", True))
             if "weather" not in self.cfg:
                 self.cfg["weather"] = {}
@@ -239,41 +312,42 @@ class GoodLightService:
                 self.ui_language = setup_data["ui_language"]
                 self.cfg["ui_language"] = self.ui_language
 
-            # 持久化写入配置文件
+            # Persist configuration to disk
             with open(self.config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
 
-            # 更新客户端鉴权
+            # Update client credentials
             self.client.update_credentials(ha_url, ha_token)
-            # 更新太阳计算器经纬度与时区
+            # Update solar calculator coordinates and timezone
             self.solar.latitude = lat
             self.solar.longitude = lng
             self.update_timezone(tz_offset)
             asyncio.create_task(self.weather.update_location(lat, lng))
-            # 重新加载分组
+            # Reload groups
             self._init_groups()
             asyncio.create_task(self._init_light_states())
-            add_log(f"已成功应用新配置！受控灯组数: {len(self.groups)}")
+            add_log(f"Configuration applied successfully! Active groups: {len(self.groups)}")
             return True
         except Exception as e:
-            logger.error(f"保存或重载配置失败: {e}")
-            add_log(f"保存配置失败: {e}")
+            logger.error(f"Failed to save and reload config: {e}")
+            add_log(f"Config reload error: {e}")
             return False
 
     def set_ui_language(self, lang: str):
+        """Set UI language preference and persist to config."""
         self.ui_language = lang
         self.cfg["ui_language"] = lang
         try:
             with open(self.config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
         except Exception as e:
-            logger.warning(f"保存语言配置失败: {e}")
+            logger.warning(f"Failed to persist language setting: {e}")
 
     async def sync_history_from_ha(self, days: int = 14) -> dict:
-        """从 Home Assistant 历史数据库回溯学习真实开关灯习惯与光照样本"""
+        """Backfill historical state records from Home Assistant to bootstrap learning curves instantly."""
         total_samples = 0
         entity_stats = {}
-        add_log(f"开始从 Home Assistant 回溯历史数据 (过去 {days} 天)...")
+        add_log(f"Starting historical backfill from Home Assistant (past {days} days)...")
 
         for gid, grp in self.groups.items():
             grp_samples = 0
@@ -302,7 +376,7 @@ class GoodLightService:
                                 b_pct = round((b / 255.0) * 100, 1) if b is not None else 80.0
                                 c_val = c if c is not None else 4000
 
-                                # 录入模型自适应学习
+                                # Train model anchors
                                 grp.model.learn(
                                     hour_float=h_float,
                                     actual_brightness=b_pct,
@@ -310,7 +384,7 @@ class GoodLightService:
                                     actual_count=1
                                 )
 
-                                # 写入本地历史时序库供图表渲染
+                                # Record to local timeline db for chart rendering
                                 self.db.record_light_state(
                                     entity_id=ent,
                                     brightness=b_pct,
@@ -320,7 +394,7 @@ class GoodLightService:
                                 )
                                 ent_on_samples += 1
                             except Exception as ex:
-                                logger.debug(f"解析历史状态异常: {ex}")
+                                logger.debug(f"Error parsing historical state: {ex}")
 
                 grp_samples += ent_on_samples
                 entity_stats[ent] = ent_on_samples
@@ -328,7 +402,7 @@ class GoodLightService:
             grp.model.save_profile()
             total_samples += grp_samples
 
-        add_log(f"历史回溯学习完成！共导入 {total_samples} 条真实光照样本，已更新自适应基线曲线。")
+        add_log(f"Historical backfill complete! Imported {total_samples} samples, circadian baseline updated.")
         return {
             "ok": True,
             "days": days,
@@ -337,24 +411,11 @@ class GoodLightService:
         }
 
     async def toggle_light(self, entity_id: str, target_state: str) -> dict:
-        """用户在面板手动勾选切换灯具状态"""
+        """Handle manual light toggle from dashboard checkbox."""
         grp = self.entity_to_group.get(entity_id)
         if target_state == "on":
             now = self.get_current_time()
-            hour_float = now.hour + now.minute / 60.0 + now.second / 3600.0
-            elevation = self.solar.get_solar_elevation(now)
-            season_factor = self.solar.get_season_factor(now)
-            w_summary = self.weather.get_summary() if self.weather.enabled else {}
-            curr_temp = w_summary.get("apparent_temperature") or w_summary.get("temperature")
-            curr_clouds = w_summary.get("cloud_cover")
-
-            pred = grp.model.predict(
-                hour_float=hour_float,
-                solar_elevation=elevation,
-                season_factor=season_factor,
-                temp_celsius=curr_temp,
-                cloud_cover=curr_clouds
-            ) if grp else {"brightness": 80, "color_temp": 4000}
+            pred = self.predict_for_group(grp, now) if grp else {"brightness": 80, "color_temp": 4000}
 
             params = self.get_light_params(entity_id, pred["brightness"], pred["color_temp"])
             self.ignore_updates.add(entity_id)
@@ -370,14 +431,18 @@ class GoodLightService:
             if rec_k is not None:
                 cur["color_temp"] = rec_k
             self.light_states[entity_id] = cur
+            self.last_command_time[entity_id] = time.time()
+            self.last_command_brightness[entity_id] = rec_b
             self.db.record_light_state(entity_id, rec_b, rec_k, "on")
-            grp_name = grp.name if grp else "受控灯具"
-            log_str = f"{rec_b}%" if params["has_brightness"] else "开"
+            grp_name = grp.name if grp else "Light"
+            log_str = f"{rec_b}%" if params["has_brightness"] else "ON"
             if rec_k is not None:
                 log_str += f" / {rec_k}K"
-            add_log(f"[{grp_name}] 勾选开启灯具: {entity_id} (节律设定: {log_str})")
+            add_log(f"[{grp_name}] Turned ON fixture: {entity_id} (Target: {log_str})")
         else:
             self.ignore_updates.add(entity_id)
+            self.last_command_time[entity_id] = time.time()
+            self.last_command_brightness[entity_id] = 0.0
             await self.client.call_service("light", "turn_off", {
                 "entity_id": entity_id,
                 "transition": 1
@@ -387,8 +452,8 @@ class GoodLightService:
             cur["brightness"] = 0
             self.light_states[entity_id] = cur
             self.db.record_light_state(entity_id, 0, cur.get("color_temp", 4000), "off")
-            grp_name = grp.name if grp else "受控灯具"
-            add_log(f"[{grp_name}] 取消勾选关闭灯具: {entity_id}")
+            grp_name = grp.name if grp else "Light"
+            add_log(f"[{grp_name}] Turned OFF fixture: {entity_id}")
 
         return {
             "ok": True,
@@ -398,7 +463,7 @@ class GoodLightService:
         }
 
     async def apply_suggested_lights(self, group_id: str) -> dict:
-        """根据算法建议数量，一键按优先级勾选开启/关闭灯具"""
+        """Apply recommended light count according to model prediction."""
         target_groups = []
         if group_id == "__all__":
             target_groups = list(self.groups.values())
@@ -406,25 +471,12 @@ class GoodLightService:
             target_groups = [self.groups[group_id]]
 
         if not target_groups:
-            return {"ok": False, "message": "未找到指定分组"}
+            return {"ok": False, "message": "Group not found"}
 
         now = self.get_current_time()
-        h_float = now.hour + now.minute / 60.0 + now.second / 3600.0
-        elevation = self.solar.get_solar_elevation(now)
-        season_factor = self.solar.get_season_factor(now)
-        w_summary = self.weather.get_summary() if self.weather.enabled else {}
-        curr_temp = w_summary.get("apparent_temperature") or w_summary.get("temperature")
-        curr_clouds = w_summary.get("cloud_cover")
-
         total_turned_on = 0
         for grp in target_groups:
-            pred = grp.model.predict(
-                hour_float=h_float,
-                solar_elevation=elevation,
-                season_factor=season_factor,
-                temp_celsius=curr_temp,
-                cloud_cover=curr_clouds
-            )
+            pred = self.predict_for_group(grp, now)
             target_count = pred.get("light_count", 1)
 
             for idx, ent in enumerate(grp.light_entities):
@@ -457,12 +509,12 @@ class GoodLightService:
                     self.light_states[ent] = cur
                     self.db.record_light_state(ent, 0, cur.get("color_temp", 4000), "off")
 
-            add_log(f"[{grp.name}] 应用建议配置: 开启前 {target_count} 盏灯")
+            add_log(f"[{grp.name}] Applied suggestion: Turn on top {target_count} light(s)")
 
         return {"ok": True, "turned_on": total_turned_on}
 
     def set_light_mode(self, entity_id: str, mode: str) -> bool:
-        """切换单个灯具的工作模式: active (全主动巡航) | turn_on (打断模式) | passive (被动学习)"""
+        """Switch operating mode for a single light: active | turn_on | passive."""
         found = False
         for g in self.cfg.get("groups", []):
             for l in g.get("lights", []):
@@ -488,21 +540,23 @@ class GoodLightService:
             with open(self.config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
             mode_names = {
-                "active": "🌊 全主动巡航",
-                "turn_on": "⚡ 打断模式(仅开灯时)",
-                "passive": "🧠 被动学习(仅记录)"
+                "active": "Active Cruise",
+                "turn_on": "Turn-On Only",
+                "passive": "Passive Learn"
             }
-            add_log(f"灯具 {entity_id} 模式已变更为: {mode_names.get(mode, mode)}")
+            add_log(f"Light {entity_id} mode switched to: {mode_names.get(mode, mode)}")
             return True
         except Exception as e:
-            logger.error(f"保存灯具模式失败: {e}")
+            logger.error(f"Failed to save light mode: {e}")
             return False
 
     def get_current_time(self) -> datetime:
+        """Get current effective datetime including simulation offset."""
         return datetime.now(self.tz) + timedelta(seconds=self.time_offset_seconds)
 
     async def start(self):
-        msg = f"GoodLight 智能感知服务启动，已加载 {len(self.groups)} 个独立灯光分组"
+        """Start all services and background event loops."""
+        msg = f"GoodLight v{__version__} started, loaded {len(self.groups)} independent group(s)"
         logger.info(msg)
         add_log(msg)
 
@@ -515,31 +569,17 @@ class GoodLightService:
         await self.client.connect()
 
     async def _active_cruise_loop(self):
-        """全主动自适应巡航循环：对于处于开灯状态且开启全主动模式的灯具，随时间沿自适应曲线平滑渐变调光调色"""
+        """Active cruise loop: gently transition active lights along circadian curve over time."""
         await asyncio.sleep(10)
         while True:
             try:
                 now = self.get_current_time()
-                h_float = now.hour + now.minute / 60.0 + now.second / 3600.0
-                elevation = self.solar.get_solar_elevation(now)
-                season_factor = self.solar.get_season_factor(now)
-                w_summary = self.weather.get_summary() if self.weather.enabled else {}
-                curr_temp = w_summary.get("apparent_temperature") or w_summary.get("temperature")
-                curr_clouds = w_summary.get("cloud_cover")
-
                 for gid, grp in self.groups.items():
                     if not grp.enabled:
                         continue
 
-                    pred = grp.model.predict(
-                        hour_float=h_float,
-                        solar_elevation=elevation,
-                        season_factor=season_factor,
-                        temp_celsius=curr_temp,
-                        cloud_cover=curr_clouds
-                    )
+                    pred = self.predict_for_group(grp, now)
                     target_b_pct = pred["brightness"]
-                    target_b_255 = max(1, min(255, round((target_b_pct / 100.0) * 255)))
                     target_k = pred["color_temp"]
 
                     for item in grp.lights:
@@ -552,7 +592,7 @@ class GoodLightService:
                         if st.get("state") != "on":
                             continue
 
-                        # 用户最近 5 分钟手动微调过，保持用户喜好暂不覆盖
+                        # If user manually adjusted in past 5 minutes, hold preference
                         last_man = self.last_manual_adjust.get(ent, 0)
                         if time.time() - last_man < 300:
                             continue
@@ -572,7 +612,7 @@ class GoodLightService:
                         if b_diff or k_diff:
                             self.ignore_updates.add(ent)
                             svc_data = dict(params["service_data"])
-                            svc_data["transition"] = 15
+                            svc_data["transition"] = 15  # Smooth 15s easing curve
                             await self.client.call_service("light", "turn_on", svc_data)
                             if has_b:
                                 st["brightness"] = clamped_b
@@ -581,21 +621,29 @@ class GoodLightService:
                             self.light_states[ent] = st
                             rec_b = clamped_b if has_b else 100.0
                             rec_k = clamped_k if has_ct else None
+                            self.last_command_time[ent] = time.time()
+                            self.last_command_brightness[ent] = rec_b
                             self.db.record_light_state(ent, rec_b, rec_k, "on")
-                            logger.debug(f"[{grp.name}] 主动巡航平滑微调: {ent} -> {rec_b}% / {rec_k}K")
+                            logger.debug(f"[{grp.name}] Active cruise transition: {ent} -> {rec_b}% / {rec_k}K")
             except Exception as e:
-                logger.debug(f"主动巡航循环异常: {e}")
+                logger.debug(f"Exception in active cruise loop: {e}")
             await asyncio.sleep(30)
 
     async def _weather_loop(self):
+        """Periodic background weather polling loop with adaptive backoff."""
         while True:
+            poll_interval = 600
             try:
-                await self.weather.fetch_weather()
+                summary = await self.weather.fetch_weather()
+                if summary.get("temperature") is None and self.weather.enabled:
+                    poll_interval = 15
             except Exception as e:
-                logger.debug(f"天气拉取异常: {e}")
-            await asyncio.sleep(600)  # 每10分钟更新一次天气数据
+                logger.debug(f"Weather fetch exception: {e}")
+                poll_interval = 15
+            await asyncio.sleep(poll_interval)
 
     async def _init_light_states(self):
+        """Initial state synchronization from Home Assistant."""
         await asyncio.sleep(2)
         for ent in self.entity_to_group.keys():
             try:
@@ -610,9 +658,10 @@ class GoodLightService:
                     c = cached.get("color_temp") if has_ct else None
                     self.db.record_light_state(ent, b, c, state_str)
             except Exception as e:
-                logger.debug(f"初始同步灯光状态失败 {ent}: {e}")
+                logger.debug(f"Initial sync failed for {ent}: {e}")
 
     async def _metrics_sampler_loop(self):
+        """Sample system and fixture performance metrics every 30s."""
         while True:
             try:
                 stats = self.web_panel.get_process_metrics()
@@ -634,10 +683,11 @@ class GoodLightService:
                         self.db.record_light_state(ent, b, c, state_str)
                 self.db.cleanup_old_data(max_days=30)
             except Exception as e:
-                logger.debug(f"性能采集异常: {e}")
+                logger.debug(f"Metrics sampling error: {e}")
             await asyncio.sleep(30)
 
     async def on_state_changed(self, event_data: dict):
+        """Handle incoming Home Assistant state_changed WebSocket event."""
         entity_id = event_data.get("entity_id")
         grp = self.entity_to_group.get(entity_id)
         if not grp or not grp.enabled:
@@ -652,18 +702,32 @@ class GoodLightService:
         old_s = old_state.get("state")
         new_s = new_state.get("state")
 
-        if entity_id in self.ignore_updates:
-            self.ignore_updates.remove(entity_id)
+        cmd_time = self.last_command_time.get(entity_id, 0)
+        time_since_cmd = time.time() - cmd_time
+
+        # Ignore self-generated command echoes during transition (4s grace window)
+        if entity_id in self.ignore_updates or time_since_cmd < 4.0:
+            if entity_id in self.ignore_updates:
+                self.ignore_updates.remove(entity_id)
+            if new_s:
+                old_attrs = old_state.get("attributes", {})
+                new_attrs = new_state.get("attributes", {})
+                new_b = new_attrs.get("brightness")
+                new_c = new_attrs.get("color_temp_kelvin") or new_attrs.get("color_temp")
+                pct_b = round((new_b / 255.0) * 100, 1) if new_b is not None else 0
+                self.db.record_light_state(entity_id, pct_b, new_c, new_s)
             return
 
         now = self.get_current_time()
         hour_float = now.hour + now.minute / 60.0 + now.second / 3600.0
 
+        # Turn ON trigger (physical switch or sensor turn on)
         if old_s != "on" and new_s == "on":
-            logger.info(f"[{grp.name}] 检测到灯具开启: {entity_id}")
+            logger.info(f"[{grp.name}] Fixture turned ON: {entity_id}")
             await self.handle_light_turned_on(grp, entity_id, now, hour_float)
             return
 
+        # Genuine manual dimming / adjustment while light is already on
         if old_s == "on" and new_s == "on":
             old_attrs = old_state.get("attributes", {})
             new_attrs = new_state.get("attributes", {})
@@ -675,42 +739,28 @@ class GoodLightService:
             pct_b = round((new_b / 255.0) * 100, 1) if new_b is not None else 0
             self.db.record_light_state(entity_id, pct_b, new_c, new_s)
 
-            b_changed = (old_b is not None and new_b is not None and abs(old_b - new_b) >= 3)
-            if b_changed:
+            b_changed = (old_b is not None and new_b is not None and abs(old_b - new_b) >= 5)
+            last_cmd_b = self.last_command_brightness.get(entity_id, -999)
+            # Only learn if user manually altered brightness significantly away from commanded target
+            if b_changed and time_since_cmd >= 5.0 and abs(pct_b - last_cmd_b) >= 5:
                 self.last_manual_adjust[entity_id] = time.time()
                 self.schedule_learning(grp, hour_float, actual_b=pct_b)
 
     async def handle_light_turned_on(self, grp: LightGroup, triggered_entity: str, dt: datetime, hour_float: float):
+        """Apply circadian target when fixture turns on."""
         t0 = time.perf_counter()
-        elevation = self.solar.get_solar_elevation(dt)
-        term_name, term_prog = self.solar.get_solar_term(dt)
-        season_factor = self.solar.get_season_factor(dt)
-
-        w_summary = self.weather.get_summary() if self.weather.enabled else {}
-        curr_temp = w_summary.get("apparent_temperature") or w_summary.get("temperature")
-        curr_clouds = w_summary.get("cloud_cover")
-
-        pred = grp.model.predict(
-            hour_float=hour_float,
-            solar_elevation=elevation,
-            season_factor=season_factor,
-            temp_celsius=curr_temp,
-            cloud_cover=curr_clouds
-        )
+        pred = self.predict_for_group(grp, dt)
         t_model_ms = (time.perf_counter() - t0) * 1000.0
-
-        b_val = max(1, min(255, round((pred["brightness"] / 100.0) * 255)))
-        k_val = pred["color_temp"]
         target_count = pred["light_count"]
 
-        # 并发或者按需下发指令，测量网络 I/O 耗时
+        # Concurrently dispatch commands to active fixtures
         t_io_start = time.perf_counter()
         io_tasks = []
         for idx, ent in enumerate(grp.light_entities):
             item_cfg = next((item for item in grp.lights if item.get("entity_id") == ent), {})
             mode = item_cfg.get("mode", "active")
 
-            # 若处于被动学习模式 (passive)，GoodLight 不主动下发指令调光
+            # In passive mode, GoodLight does not actively command dimming
             if mode == "passive":
                 continue
 
@@ -722,6 +772,8 @@ class GoodLightService:
                 io_tasks.append(self.client.call_service("light", "turn_on", svc_data))
                 rec_b = params["clamped_brightness_pct"] if params["has_brightness"] else 100.0
                 rec_k = params["clamped_kelvin"] if params["has_color_temp"] else None
+                self.last_command_time[ent] = time.time()
+                self.last_command_brightness[ent] = rec_b
                 self.db.record_light_state(ent, rec_b, rec_k, "on")
 
         if io_tasks:
@@ -729,11 +781,12 @@ class GoodLightService:
         t_io_ms = (time.perf_counter() - t_io_start) * 1000.0
         total_ms = (time.perf_counter() - t0) * 1000.0
 
-        log_msg = f"[{grp.name}] 开灯响应 -> 模型纯推算耗时: {t_model_ms:.3f}ms | 网络下发耗时: {t_io_ms:.1f}ms | 总响应: {total_ms:.1f}ms (推荐: {pred['brightness']}% / {pred['color_temp']}K / {target_count}盏)"
+        log_msg = f"[{grp.name}] Turn-on response -> Model compute: {t_model_ms:.3f}ms | Network I/O: {t_io_ms:.1f}ms | Total: {total_ms:.1f}ms (Target: {pred['brightness']}% / {pred['color_temp']}K / {target_count} light(s))"
         logger.info(log_msg)
         add_log(log_msg)
 
     def schedule_learning(self, grp: LightGroup, hour_float: float, actual_b: float = None, actual_c: int = None, actual_count: int = None):
+        """Debounce manual adjustments before updating model weights."""
         debounce_sec = self.cfg.get("learning", {}).get("debounce_seconds", 3.0)
         lr = self.cfg.get("learning", {}).get("learning_rate", 0.25)
 
@@ -746,7 +799,7 @@ class GoodLightService:
                 actual_count=actual_count,
                 learning_rate=lr
             )
-            add_log(f"[{grp.name}] 触发被动学习: 用户手动调光至 {actual_b}% (时刻: {hour_float:.1f}h，自适应曲线已完成局部学习更新)")
+            add_log(f"[{grp.name}] Triggered learning: manual adjustment to {actual_b}% (Time: {hour_float:.1f}h, local curve updated)")
 
         if "learn" in grp.debounce_tasks:
             grp.debounce_tasks["learn"].cancel()

@@ -1,23 +1,23 @@
 """
-GoodLight 天文与节气计算模块 (纯数学实现，零外部沉重依赖)
-支持：
-- 真实太阳高度角 (Solar Elevation) 与方位角 (Azimuth)
-- 真实日出、日落与暮光时间 (Dawn, Dusk, Golden Hour)
-- 太阳黄经 (Solar Ecliptic Longitude) 与二十四节气精确判定
-- 四季相位 (Astronomical Seasons)
+GoodLight Astronomical and Circadian Solar Calculator (Pure math implementation, zero external heavy dependencies).
+Features:
+- Precise Solar Elevation and Azimuth angles
+- Accurate Astronomical Dawn, Dusk, and Golden Hour
+- Solar Ecliptic Longitude and 24 Solar Terms evaluation
+- Astronomical Seasonal Factors
 """
 
 import math
 from datetime import datetime, timezone, timedelta
 
-# 二十四节气名称 (按黄经 0度-春分 顺时针排列)
+# 24 Solar Terms in astronomical solar longitude order (0 deg = Spring Equinox)
 SOLAR_TERMS = [
-    ("春分", 0),   ("清明", 15),  ("谷雨", 30),  ("立夏", 45),
-    ("小满", 60),  ("芒种", 75),  ("夏至", 90),  ("小暑", 105),
-    ("大暑", 120), ("立秋", 135), ("处暑", 150), ("白露", 165),
-    ("秋分", 180), ("寒露", 195), ("霜降", 210), ("立冬", 225),
-    ("小雪", 240), ("大雪", 255), ("冬至", 270), ("小寒", 285),
-    ("大寒", 300), ("立春", 315), ("雨水", 330), ("惊蛰", 345)
+    ("春分 / Spring Equinox", 0),    ("清明 / Pure Brightness", 15),  ("谷雨 / Grain Rain", 30),        ("立夏 / Start of Summer", 45),
+    ("小满 / Grain Buds", 60),       ("芒种 / Grain in Ear", 75),     ("夏至 / Summer Solstice", 90),   ("小暑 / Minor Heat", 105),
+    ("大暑 / Major Heat", 120),      ("立秋 / Start of Autumn", 135), ("处暑 / End of Heat", 150),      ("白露 / White Dew", 165),
+    ("秋分 / Autumnal Equinox", 180),("寒露 / Cold Dew", 195),        ("霜降 / Frost's Descent", 210),  ("立冬 / Start of Winter", 225),
+    ("小雪 / Minor Snow", 240),      ("大雪 / Major Snow", 255),      ("冬至 / Winter Solstice", 270),  ("小寒 / Minor Cold", 285),
+    ("大寒 / Major Cold", 300),      ("立春 / Start of Spring", 315), ("雨水 / Rain Water", 330),       ("惊蛰 / Awakening of Insects", 345)
 ]
 
 class SolarCalculator:
@@ -27,7 +27,7 @@ class SolarCalculator:
         self.tz = timezone(timedelta(hours=tz_offset_hours))
 
     def _julian_day(self, dt: datetime) -> float:
-        """计算儒略日"""
+        """Calculate astronomical Julian Day from datetime."""
         utc = dt.astimezone(timezone.utc)
         year, month, day = utc.year, utc.month, utc.day
         hour = utc.hour + utc.minute / 60.0 + utc.second / 3600.0
@@ -40,15 +40,15 @@ class SolarCalculator:
         return jd + hour / 24.0
 
     def get_solar_longitude(self, dt: datetime) -> float:
-        """计算太阳真黄经 (0~360度)，用于判定二十四节气"""
+        """Calculate true solar ecliptic longitude (0~360 deg) for 24 Solar Terms evaluation."""
         jd = self._julian_day(dt)
         T = (jd - 2451545.0) / 36525.0
-        # 太阳平黄经
+        # Mean longitude
         L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T * T
-        # 太阳平近点角
+        # Mean anomaly
         M = 357.52911 + 35999.05029 * T - 0.0001537 * T * T
         M_rad = math.radians(M)
-        # 太阳中心差
+        # Equation of center
         C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * math.sin(M_rad) \
             + (0.019993 - 0.000101 * T) * math.sin(2 * M_rad) \
             + 0.000289 * math.sin(3 * M_rad)
@@ -56,7 +56,7 @@ class SolarCalculator:
         return true_lon
 
     def get_solar_term(self, dt: datetime) -> tuple[str, float]:
-        """获取当前二十四节气名称与节气相位进度 (0.0 ~ 1.0)"""
+        """Return current solar term name and phase progress (0.0 ~ 1.0)."""
         lon = self.get_solar_longitude(dt)
         term_idx = int(lon // 15)
         name, base_lon = SOLAR_TERMS[term_idx]
@@ -65,16 +65,16 @@ class SolarCalculator:
 
     def get_season_factor(self, dt: datetime) -> float:
         """
-        季节冷暖偏好因子 [-1.0, 1.0]
-        冬至 (-1.0) -> 春分 (0.0) -> 夏至 (1.0) -> 秋分 (0.0)
-        夏至偏凉白，冬至偏暖黄
+        Seasonal thermal preference factor [-1.0, 1.0].
+        Winter Solstice (-1.0) -> Spring Equinox (0.0) -> Summer Solstice (1.0) -> Autumnal Equinox (0.0).
+        Positive values skew towards cooler whites; negative values skew towards warmer ambers.
         """
         lon = self.get_solar_longitude(dt)
-        # 黄经 90度为夏至 (1.0)，270度为冬至 (-1.0)
+        # Solar longitude 90 deg is Summer Solstice (1.0), 270 deg is Winter Solstice (-1.0)
         return math.sin(math.radians(lon))
 
     def get_solar_elevation(self, dt: datetime) -> float:
-        """计算当前时刻的太阳真实高度角 (单位: 度，水平线上为正，线下为负)"""
+        """Calculate true solar elevation angle (degrees, positive above horizon, negative below)."""
         jd = self._julian_day(dt)
         T = (jd - 2451545.0) / 36525.0
         L0 = 280.46646 + 36000.76983 * T
@@ -82,11 +82,11 @@ class SolarCalculator:
         M_rad = math.radians(M)
         C = (1.914602 - 0.004817 * T) * math.sin(M_rad) + 0.02 * math.sin(2 * M_rad)
         true_lon = math.radians(L0 + C)
-        # 黄赤交角
+        # Obliquity of the ecliptic
         obliquity = math.radians(23.439291 - 0.0130042 * T)
-        # 太阳赤纬
+        # Solar declination
         dec = math.asin(math.sin(obliquity) * math.sin(true_lon))
-        # 均时差
+        # Equation of time
         e_time = 4.0 * math.degrees(math.tan(obliquity / 2)**2 * math.sin(2 * true_lon) - 2 * 0.0167 * math.sin(M_rad))
 
         utc = dt.astimezone(timezone.utc)

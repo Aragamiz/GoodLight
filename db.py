@@ -1,9 +1,10 @@
 """
-GoodLight 历史时序数据存储模块 (SQLite 轻量纯标准库实现)
-记录：
-1. 性能指标 (CPU, Memory RSS, Memory VMS)
-2. 每一个灯的实际/预测亮度与色温历史
-支持保留最多 30 天，支持多时间范围聚合查询 (1小时、24小时、7天、30天)
+GoodLight Time-Series Historical Metrics Storage Module.
+Built on lightweight standard library SQLite:
+Records:
+1. System performance metrics (CPU %, Memory RSS MB, Memory VMS MB)
+2. Per-fixture actual/predicted brightness and color temperature history
+Supports up to 30 days retention with multi-range aggregated downsampling (1h, 24h, 7d, 30d).
 """
 
 import sqlite3
@@ -20,13 +21,15 @@ class HistoryDB:
         self.init_db()
 
     def get_conn(self):
+        """Create and return a new SQLite connection with Row factory."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
     def init_db(self):
+        """Initialize database schema and indices."""
         with self.get_conn() as conn:
-            # 性能时序表
+            # System metrics timeline table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS system_metrics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +41,7 @@ class HistoryDB:
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sys_ts ON system_metrics(timestamp);")
 
-            # 灯光状态时序表
+            # Fixture state timeline table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS light_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,6 +68,7 @@ class HistoryDB:
                 pass
 
     def record_metrics(self, cpu: float, rss_mb: float, vms_mb: float):
+        """Insert a snapshot of system resource metrics."""
         now_ts = int(time.time())
         with self.get_conn() as conn:
             conn.execute(
@@ -73,6 +77,7 @@ class HistoryDB:
             )
 
     def record_light_state(self, entity_id: str, brightness: float, color_temp: int, state: str, timestamp: int = None):
+        """Record state of a single light entity."""
         now_ts = int(timestamp) if timestamp is not None else int(time.time())
         with self.get_conn() as conn:
             conn.execute(
@@ -81,13 +86,14 @@ class HistoryDB:
             )
 
     def cleanup_old_data(self, max_days: int = 30):
-        """清理超过 30 天的过期数据，保持数据库轻巧"""
+        """Prune records older than max_days to maintain a small database footprint."""
         expire_ts = int(time.time()) - (max_days * 86400)
         with self.get_conn() as conn:
             conn.execute("DELETE FROM system_metrics WHERE timestamp < ?", (expire_ts,))
             conn.execute("DELETE FROM light_history WHERE timestamp < ?", (expire_ts,))
 
     def query_metrics(self, hours: float = 24.0, tz=None) -> Dict[str, List[Any]]:
+        """Query system performance metrics over a time window."""
         start_ts = int(time.time() - hours * 3600)
         step = 1
         if hours > 24 * 7:
@@ -124,6 +130,7 @@ class HistoryDB:
         }
 
     def query_light_history(self, hours: float = 24.0, tz=None) -> Dict[str, Any]:
+        """Query light history downsampled per entity for smooth chart rendering."""
         start_ts = int(time.time() - hours * 3600)
         stride = 1
         if hours > 24 * 7:

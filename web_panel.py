@@ -1,5 +1,5 @@
 """
-GoodLight 现代可视化 Web Dashboard 控制面板 (带时区调整、时间微调与多分组控制)
+GoodLight Modern Visual Web Dashboard Control Panel (with timezone tuning, simulation clock, and multi-group controls).
 """
 
 import os
@@ -114,6 +114,34 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       background: var(--primary);
       color: #0b1329;
       font-weight: 700;
+    }
+    .view-filter-bar {
+      display: flex;
+      gap: 4px;
+      background: #090e1a;
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .filter-btn {
+      background: transparent;
+      border: none;
+      color: var(--subtext);
+      padding: 4px 9px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover {
+      color: var(--text);
+    }
+    .filter-btn.active {
+      background: #1e293b;
+      color: var(--primary);
+      font-weight: 700;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
     .btn-action {
       background: #1e293b;
@@ -363,6 +391,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <circle cx="16" cy="13.3" r="1.2" fill="#fbbf24"/>
       </svg>
       <span id="page-title">GoodLight 控制面板</span>
+      <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: var(--primary); padding: 1px 6px; border-radius: 4px; font-weight: 600; font-family: monospace;">v0.1.0</span>
     </div>
     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
       <button class="btn-action" id="btn-lang-toggle" onclick="toggleLanguage()" style="font-weight: 600; border-color: var(--primary); color: var(--primary);">🌐 English</button>
@@ -401,44 +430,44 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </svg>
           </div>
           <h1 style="font-size: 38px; font-weight: 800; background: linear-gradient(135deg, #38bdf8 0%, #fbbf24 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px;">GoodLight</h1>
-          <div style="font-size: 15px; color: var(--subtext); margin-bottom: 24px;">智能天体节气自适应全屋照明系统</div>
+          <div id="wiz-sub" style="font-size: 15px; color: var(--subtext); margin-bottom: 24px;">智能天体节气自适应全屋照明系统</div>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; text-align: left; margin-bottom: 28px;">
             <div style="background: #090e1a; padding: 16px; border-radius: 10px; border: 1px solid var(--border);">
-              <div style="font-size: 16px; font-weight: 600; color: var(--primary); margin-bottom: 6px;">☀️ 自然日光感知</div>
-              <div style="font-size: 12px; color: var(--subtext); line-height: 1.5;">精准解算太阳真实高度角与真太阳时，实现生理昼夜节律自适应光照。</div>
+              <div id="wiz-f1-title" style="font-size: 16px; font-weight: 600; color: var(--primary); margin-bottom: 6px;">☀️ 自然日光感知</div>
+              <div id="wiz-f1-desc" style="font-size: 12px; color: var(--subtext); line-height: 1.5;">精准解算太阳真实高度角与真太阳时，实现生理昼夜节律自适应光照。</div>
             </div>
             <div style="background: #090e1a; padding: 16px; border-radius: 10px; border: 1px solid var(--border);">
-              <div style="font-size: 16px; font-weight: 600; color: var(--accent); margin-bottom: 6px;">🌾 二十四节气温感</div>
-              <div style="font-size: 12px; color: var(--subtext); line-height: 1.5;">夏至清凉、冬至温煦，四季变换动态补偿室内温差氛围感。</div>
+              <div id="wiz-f2-title" style="font-size: 16px; font-weight: 600; color: var(--accent); margin-bottom: 6px;">🌾 二十四节气温感</div>
+              <div id="wiz-f2-desc" style="font-size: 12px; color: var(--subtext); line-height: 1.5;">夏至清凉、冬至温煦，四季变换动态补偿室内温差氛围感。</div>
             </div>
             <div style="background: #090e1a; padding: 16px; border-radius: 10px; border: 1px solid var(--border);">
-              <div style="font-size: 16px; font-weight: 600; color: var(--success); margin-bottom: 6px;">⚡ 边缘极简低开销</div>
-              <div style="font-size: 12px; color: var(--subtext); line-height: 1.5;">为路由器/Docker定制，纯Python高效引擎，内存仅~40MB。</div>
+              <div id="wiz-f3-title" style="font-size: 16px; font-weight: 600; color: var(--success); margin-bottom: 6px;">⚡ 边缘极简低开销</div>
+              <div id="wiz-f3-desc" style="font-size: 12px; color: var(--subtext); line-height: 1.5;">为路由器/Docker定制，纯Python高效引擎，内存仅~40MB。</div>
             </div>
           </div>
           <div style="display: flex; justify-content: center; gap: 12px;">
-            <button class="wiz-btn-primary" style="padding: 11px 28px; font-size: 15px;" onclick="goToStep(2)">开始配置向导 →</button>
-            <button class="wiz-btn-secondary" onclick="closeWizard()">进入控制台</button>
+            <button id="btn-wiz-start" class="wiz-btn-primary" style="padding: 11px 28px; font-size: 15px;" onclick="goToStep(2)">开始配置向导 →</button>
+            <button id="btn-wiz-close" class="wiz-btn-secondary" onclick="closeWizard()">进入控制台</button>
           </div>
         </div>
       </div>
 
       <!-- Step 2: 填写令牌 -->
       <div id="wizard-step-2" style="display: none;">
-        <h2 style="font-size: 18px; color: var(--primary); margin-bottom: 6px;">🔑 填写 Home Assistant 访问令牌</h2>
-        <div style="font-size: 13px; color: var(--subtext); margin-bottom: 20px;">
+        <h2 id="wiz-step2-title" style="font-size: 18px; color: var(--primary); margin-bottom: 6px;">🔑 填写 Home Assistant 访问令牌</h2>
+        <div id="wiz-step2-desc" style="font-size: 13px; color: var(--subtext); margin-bottom: 20px;">
           GoodLight 通过 WebSocket 与 REST API 和 Home Assistant 实时同步，请填入连接信息。
         </div>
 
-        <label style="font-size: 13px; font-weight: 600; color: var(--text);">Home Assistant 地址 (URL):</label>
+        <label id="lbl-ha-url" style="font-size: 13px; font-weight: 600; color: var(--text);">Home Assistant 地址 (URL):</label>
         <input type="text" id="wiz-ha-url" class="wiz-input" value="http://192.168.6.1:8123" placeholder="例如: http://192.168.6.1:8123">
 
-        <label style="font-size: 13px; font-weight: 600; color: var(--text);">长期访问令牌 (Long-Lived Access Token):</label>
+        <label id="lbl-ha-token" style="font-size: 13px; font-weight: 600; color: var(--text);">长期访问令牌 (Long-Lived Access Token):</label>
         <div style="position: relative;">
           <input type="password" id="wiz-ha-token" class="wiz-input" style="padding-right: 40px;" placeholder="粘贴你的 HA 长期访问令牌 (eyJhbGci...)">
           <span onclick="toggleTokenVisibility()" style="position: absolute; right: 12px; top: 14px; cursor: pointer; font-size: 16px;" title="显示/隐藏令牌">👁️</span>
         </div>
-        <div style="font-size: 12px; color: var(--subtext); margin-top: -6px; margin-bottom: 16px;">
+        <div id="txt-token-tip" style="font-size: 12px; color: var(--subtext); margin-top: -6px; margin-bottom: 16px;">
           💡 获取方式：在 Home Assistant 点击左下角头像 ➔ 滚动到底部【长期访问令牌】➔ 点击【创建令牌】并复制。
         </div>
 
@@ -449,7 +478,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div id="wiz-conn-status" style="margin-bottom: 20px; font-size: 13px; padding: 10px 14px; border-radius: 8px; display: none;"></div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px;">
-          <button class="wiz-btn-secondary" onclick="goToStep(1)">← 上一步</button>
+          <button id="btn-step2-back" class="wiz-btn-secondary" onclick="goToStep(1)">← 上一步</button>
           <button class="wiz-btn-primary" id="btn-step2-next" onclick="goToStep(3)">下一步：加入灯组 →</button>
         </div>
       </div>
@@ -457,13 +486,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <!-- Step 3: 加入灯组 (自主识别灯具) -->
       <div id="wizard-step-3" style="display: none;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-          <h2 style="font-size: 18px; color: var(--primary);">💡 自主识别全屋灯具与分组</h2>
+          <h2 id="wiz-step3-title" style="font-size: 18px; color: var(--primary);">💡 自主识别全屋灯具与分组</h2>
           <div style="display: flex; gap: 8px;">
-            <button class="btn-action" onclick="autoRecommendGroups()">⚡ 智能自动分组</button>
-            <button class="btn-action" onclick="rescanLights()">🔄 重新扫描</button>
+            <button id="btn-auto-group" class="btn-action" onclick="autoRecommendGroups()">⚡ 智能自动分组</button>
+            <button id="btn-rescan-lights" class="btn-action" onclick="rescanLights()">🔄 重新扫描</button>
           </div>
         </div>
-        <div style="font-size: 13px; color: var(--subtext); margin-bottom: 16px;">
+        <div id="wiz-step3-desc" style="font-size: 13px; color: var(--subtext); margin-bottom: 16px;">
           系统已自主识别出全屋灯具，请选择各灯具归属的自适应控制分组（不需要托管的灯可设为“不纳入托管”）：
         </div>
 
@@ -483,28 +512,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px;">
-          <button class="wiz-btn-secondary" onclick="goToStep(2)">← 上一步</button>
-          <button class="wiz-btn-primary" onclick="goToStep(4)">下一步：补足信息 →</button>
+          <button id="btn-step3-back" class="wiz-btn-secondary" onclick="goToStep(2)">← 上一步</button>
+          <button id="btn-step3-next" class="wiz-btn-primary" onclick="goToStep(4)">下一步：补足信息 →</button>
         </div>
       </div>
 
       <!-- Step 4: 补足各种信息 (全球地址与气象配置) -->
       <div id="wizard-step-4" style="display: none;">
-        <h2 style="font-size: 18px; color: var(--primary); margin-bottom: 6px;">🌍 全球地址搜索与环境气象配置</h2>
-        <div style="font-size: 13px; color: var(--subtext); margin-bottom: 16px;">
+        <h2 id="wiz-step4-title" style="font-size: 18px; color: var(--primary); margin-bottom: 6px;">🌍 全球地址搜索与环境气象配置</h2>
+        <div id="wiz-step4-desc" style="font-size: 13px; color: var(--subtext); margin-bottom: 16px;">
           GoodLight 面向全球用户，输入任何城市或地址即可自动定位经纬度、推算太阳高度角与本地时区。
         </div>
 
-        <label style="font-size: 13px; font-weight: 600; color: var(--text);">全球地址/城市搜索 (支持中文或英文)：</label>
+        <label id="lbl-geo-search" style="font-size: 13px; font-weight: 600; color: var(--text);">全球地址/城市搜索 (支持中文或英文)：</label>
         <div style="display: flex; gap: 8px; margin: 8px 0 10px;">
           <input type="text" id="wiz-geo-search" class="wiz-input" style="margin: 0; flex: 1;" placeholder="输入全球任意城市，如: London, Tokyo, New York, 巴黎, 武汉, 悉尼..." onkeydown="if(event.key==='Enter') searchLocation()">
-          <button class="wiz-btn-primary" style="white-space: nowrap;" onclick="searchLocation()">🔍 全球搜索</button>
+          <button id="btn-geo-search" class="wiz-btn-primary" style="white-space: nowrap;" onclick="searchLocation()">🔍 全球搜索</button>
         </div>
 
         <!-- 搜索结果下拉候选框 -->
         <div id="geo-results-box" style="display: none; background: #090e1a; border: 1px solid var(--border); border-radius: 8px; max-height: 160px; overflow-y: auto; margin-bottom: 14px; padding: 6px;"></div>
 
-        <div style="font-size: 12px; color: var(--subtext); margin-bottom: 6px;">热门全球大都市快捷填充：</div>
+        <div id="lbl-hot-cities" style="font-size: 12px; color: var(--subtext); margin-bottom: 6px;">热门全球大都市快捷填充：</div>
         <div style="margin-bottom: 16px;">
           <span class="city-pill" onclick="setCity(39.9042, 116.4074, 8.0, '北京, 中国')">🇨🇳 北京</span>
           <span class="city-pill" onclick="setCity(35.6895, 139.6917, 9.0, 'Tokyo, Japan')">🇯🇵 东京</span>
@@ -519,16 +548,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
           <div>
-            <label style="font-size: 13px; font-weight: 600; color: var(--text);">纬度 (Latitude):</label>
+            <label id="lbl-lat" style="font-size: 13px; font-weight: 600; color: var(--text);">纬度 (Latitude):</label>
             <input type="number" id="wiz-lat" class="wiz-input" step="0.0001" value="39.9042" onchange="previewWeatherForCoords()">
           </div>
           <div>
-            <label style="font-size: 13px; font-weight: 600; color: var(--text);">经度 (Longitude):</label>
+            <label id="lbl-lng" style="font-size: 13px; font-weight: 600; color: var(--text);">经度 (Longitude):</label>
             <input type="number" id="wiz-lng" class="wiz-input" step="0.0001" value="116.4074" onchange="previewWeatherForCoords()">
           </div>
         </div>
 
-        <label style="font-size: 13px; font-weight: 600; color: var(--text);">本地时区 (Timezone):</label>
+        <label id="lbl-tz" style="font-size: 13px; font-weight: 600; color: var(--text);">本地时区 (Timezone):</label>
         <select id="wiz-tz" class="wiz-input" style="height: 42px;">
           <option value="12.0">UTC+12 (奥克兰 / 斐济)</option>
           <option value="10.0">UTC+10 (悉尼 / 墨尔本)</option>
@@ -553,9 +582,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div style="background: #090e1a; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 14px;">
           <label style="font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; cursor: pointer;">
             <input type="checkbox" id="wiz-weather-toggle" checked style="width: 16px; height: 16px;">
-            <span>⛅ 启用全球实时气象与温度自适应联动 (基于 Open-Meteo 免 Key 公开气象服务)</span>
+            <span id="lbl-weather-toggle">⛅ 启用全球实时气象与温度自适应联动 (基于 Open-Meteo 免 Key 公开气象服务)</span>
           </label>
-          <div style="font-size: 12px; color: var(--subtext); margin-top: 6px; margin-left: 24px; line-height: 1.5;">
+          <div id="txt-weather-desc" style="font-size: 12px; color: var(--subtext); margin-top: 6px; margin-left: 24px; line-height: 1.5;">
             • <strong>环境气温色温补偿</strong>：寒冷时自动增添温暖色调 (-250K)，炎热时增加冷静清爽感 (+200K)<br>
             • <strong>阴雨云量采光补偿</strong>：白天厚重云层 (云量>50%) 自动调高室内亮度，补偿天然采光不足
           </div>
@@ -563,29 +592,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px; margin-top: 18px;">
-          <button class="wiz-btn-secondary" onclick="goToStep(3)">← 上一步</button>
-          <button class="wiz-btn-primary" onclick="goToStep(5)">下一步：完成确认 →</button>
+          <button id="btn-step4-back" class="wiz-btn-secondary" onclick="goToStep(3)">← 上一步</button>
+          <button id="btn-step4-next" class="wiz-btn-primary" onclick="goToStep(5)">下一步：完成确认 →</button>
         </div>
       </div>
 
       <!-- Step 5: 完成流程 -->
       <div id="wizard-step-5" style="display: none;">
-        <h2 style="font-size: 18px; color: var(--success); margin-bottom: 6px;">🎉 配置完成，准备启动！</h2>
-        <div style="font-size: 13px; color: var(--subtext); margin-bottom: 20px;">
+        <h2 id="wiz-step5-title" style="font-size: 18px; color: var(--success); margin-bottom: 6px;">🎉 配置完成，准备启动！</h2>
+        <div id="wiz-step5-desc" style="font-size: 13px; color: var(--subtext); margin-bottom: 20px;">
           请核对以下配置清单，确认无误后点击下方按钮立即启动 GoodLight 自适应光照系统：
         </div>
 
-        <div style="background: #090e1a; border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 24px; font-size: 13px; line-height: 1.8;">
-          <div><strong style="color: var(--primary);">Home Assistant 地址:</strong> <span id="summary-url">--</span></div>
-          <div><strong style="color: var(--primary);">长期访问令牌:</strong> <span id="summary-token">已配置</span></div>
-          <div><strong style="color: var(--primary);">自适应托管灯组:</strong> <span id="summary-groups">--</span></div>
-          <div><strong style="color: var(--primary);">地理坐标与时区:</strong> <span id="summary-loc">--</span></div>
-          <div><strong style="color: var(--primary);">全球气象与温度感知:</strong> <span id="summary-weather">--</span></div>
-          <div><strong style="color: var(--primary);" id="summary-lbl-history">HA 历史数据回溯:</strong> <span id="summary-history">已启用 (从过去 14 天记录回溯)</span></div>
+        <div style="background: #090e1a; border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 20px; font-size: 13px; line-height: 1.8;">
+          <div><strong style="color: var(--primary);" id="lbl-sum-url">Home Assistant 地址:</strong> <span id="summary-url">--</span></div>
+          <div><strong style="color: var(--primary);" id="lbl-sum-token">长期访问令牌:</strong> <span id="summary-token">已配置</span></div>
+          <div><strong style="color: var(--primary);" id="lbl-sum-groups">自适应托管灯组:</strong> <span id="summary-groups">--</span></div>
+          <div><strong style="color: var(--primary);" id="lbl-sum-loc">地理坐标与时区:</strong> <span id="summary-loc">--</span></div>
+          <div><strong style="color: var(--primary);" id="lbl-sum-weather">全球气象与温度感知:</strong> <span id="summary-weather">--</span></div>
+          <div><strong style="color: var(--primary);" id="lbl-sum-history">HA 历史数据回溯:</strong> <span id="summary-history">已启用 (从过去 14 天记录回溯)</span></div>
+        </div>
+
+        <!-- 凌动开关与硬件底层默认灯光最佳实践引导卡片 -->
+        <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 12px; padding: 16px; margin-bottom: 22px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span style="font-size: 18px;">💡</span>
+            <strong style="color: var(--primary); font-size: 14px;" id="wiz-flex-guide-title">硬件与开关推荐设置（针对凌动/自回弹开关与实体开关）</strong>
+          </div>
+          <div style="font-size: 12px; color: var(--text); line-height: 1.6;" id="wiz-flex-guide-body">
+            若你使用<strong>凌动开关（回弹脉冲开关）</strong>或日常通过物理开关通电开灯：<br>
+            • <strong>痛点原因</strong>：开灯瞬间灯泡硬件优先读取芯片本地记忆，导致先亮起旧灯光，数百毫秒后才跳变到 GoodLight 节律曲线。<br>
+            • <strong>官方推荐配置（进入米家/厂商 App ➔ 灯具「默认状态」菜单）</strong>：<br>
+            &nbsp;&nbsp;① <strong>关闭「恢复断电前灯光」</strong>（彻底杜绝深夜开灯被上次白天的高亮白光闪瞎）；<br>
+            &nbsp;&nbsp;② <strong>开启「默认灯光」</strong>，将灯光手动调至<strong>最低亮度（1% 或 最低滑块）+ 最暖色温（3000K/2700K）</strong>并保存为默认灯光。<br>
+            • <strong>实现体验</strong>：深夜开灯 0 毫秒即是护眼微光，完全无感不刺眼；白天开灯如同<strong>日出软启动（从 1% 自然渐变升至明亮日光）</strong>，极具高级感！
+          </div>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 18px;">
-          <button class="wiz-btn-secondary" onclick="goToStep(4)">← 返回修改</button>
+          <button id="btn-step5-back" class="wiz-btn-secondary" onclick="goToStep(4)">← 返回修改</button>
           <button class="wiz-btn-primary" id="btn-wiz-finish" style="background: var(--success); font-size: 15px; padding: 11px 24px;" onclick="finishWizard()">🎉 保存并启动 GoodLight 自适应巡航</button>
         </div>
       </div>
@@ -596,41 +641,111 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <details class="card" style="margin-bottom: 16px; padding: 12px 18px;">
     <summary style="font-size: 13px; color: var(--subtext); cursor: pointer; user-select: none; font-weight: 600; display: flex; align-items: center; justify-content: space-between; list-style: none;">
       <span style="display: flex; align-items: center; gap: 8px;">
-        <span>🛠️ 开发者与调试工具 (Debug Tools)</span>
-        <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: var(--primary); padding: 2px 8px; border-radius: 4px;">时区自由选择 / 仿真时间测试</span>
+        <span id="lbl-debug-title">🛠️ 开发者与调试工具 (Debug Tools)</span>
+        <span id="lbl-debug-pill" style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: var(--primary); padding: 2px 8px; border-radius: 4px;">时区自由选择 / 仿真时间测试</span>
       </span>
       <span id="debug-toggle-icon" style="font-size: 12px; color: var(--primary);">展开 ▼</span>
     </summary>
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border);">
-      <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="font-size: 13px; color: var(--subtext);">🌐 时区自由选择:</span>
-        <select id="tz-select" onchange="onTimezoneChange(this.value)">
-          <option value="8.0">UTC+8 (北京 / 上海 / 香港 / 台北)</option>
-          <option value="9.0">UTC+9 (东京 / 首尔)</option>
-          <option value="0.0">UTC+0 (伦敦 / 格林尼治 GMT)</option>
-          <option value="1.0">UTC+1 (巴黎 / 柏林)</option>
-          <option value="-5.0">UTC-5 (纽约 / 美东)</option>
-          <option value="-8.0">UTC-8 (旧金山 / 洛杉矶 / 太平洋)</option>
-        </select>
+    <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border);">
+      <!-- 第一行: 时区与仿真 -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span id="lbl-debug-tz" style="font-size: 13px; color: var(--subtext);">🌐 时区自由选择:</span>
+          <select id="tz-select" onchange="onTimezoneChange(this.value)">
+            <option value="8.0">UTC+8 (北京 / 上海 / 香港 / 台北)</option>
+            <option value="9.0">UTC+9 (东京 / 首尔)</option>
+            <option value="0.0">UTC+0 (伦敦 / 格林尼治 GMT)</option>
+            <option value="1.0">UTC+1 (巴黎 / 柏林)</option>
+            <option value="-5.0">UTC-5 (纽约 / 美东)</option>
+            <option value="-8.0">UTC-8 (旧金山 / 洛杉矶 / 太平洋)</option>
+          </select>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span id="lbl-debug-sim" style="font-size: 13px; color: var(--subtext);">⏳ 时间微调仿真:</span>
+          <button class="btn-action" onclick="adjustTime(-60)">-1小时</button>
+          <button class="btn-action" onclick="adjustTime(-15)">-15分</button>
+          <button class="btn-action" onclick="adjustTime(15)">+15分</button>
+          <button class="btn-action" onclick="adjustTime(60)">+1小时</button>
+          <button id="btn-reset-time" class="btn-action" style="border-color: var(--accent); color: var(--accent);" onclick="resetTime()">重置为实时时间</button>
+        </div>
       </div>
 
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-        <span style="font-size: 13px; color: var(--subtext);">⏳ 时间微调仿真:</span>
-        <button class="btn-action" onclick="adjustTime(-60)">-1小时</button>
-        <button class="btn-action" onclick="adjustTime(-15)">-15分</button>
-        <button class="btn-action" onclick="adjustTime(15)">+15分</button>
-        <button class="btn-action" onclick="adjustTime(60)">+1小时</button>
-        <button class="btn-action" style="border-color: var(--accent); color: var(--accent);" onclick="resetTime()">重置为实时时间</button>
+      <!-- 第二行: 季节因子与天气因子手动调优 -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; background: rgba(15, 23, 42, 0.4); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border);">
+        <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 270px;">
+          <label style="font-size: 12px; color: var(--text); font-weight: 600; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="chk-season-override" onchange="toggleSeasonOverride(this.checked)" style="accent-color: var(--primary);">
+            <span id="lbl-season-override-title">🌾 手动锁定季节因子:</span>
+          </label>
+          <input type="range" id="rng-season-factor" min="-1.0" max="1.0" step="0.05" value="0.0" disabled oninput="onSeasonSliderInput(this.value)" onchange="applyFactorsOverride()" style="flex: 1; cursor: pointer;">
+          <span id="val-season-factor" style="font-size: 12px; font-weight: 600; color: #38bdf8; min-width: 50px;">自动</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 270px;">
+          <label style="font-size: 12px; color: var(--text); font-weight: 600; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="chk-weather-override" onchange="toggleWeatherOverride(this.checked)" style="accent-color: var(--primary);">
+            <span id="lbl-weather-override-title">⛅ 手动锁定天气环境倍率:</span>
+          </label>
+          <input type="range" id="rng-weather-factor" min="0.80" max="1.20" step="0.01" value="1.00" disabled oninput="onWeatherSliderInput(this.value)" onchange="applyFactorsOverride()" style="flex: 1; cursor: pointer;">
+          <span id="val-weather-factor" style="font-size: 12px; font-weight: 600; color: #4ade80; min-width: 50px;">自动</span>
+        </div>
+
+        <button class="btn-action" onclick="resetFactorsToAuto()" id="btn-reset-factors" style="font-size: 11px; padding: 4px 10px;">🔄 恢复全自动解算</button>
+      </div>
+
+      <!-- 手动气象参数弹窗式输入行 (当天气源为手动模式时自动展示) -->
+      <div id="manual-weather-inputs-row" style="display: none; align-items: center; gap: 10px; flex-wrap: wrap; background: rgba(30, 41, 59, 0.4); padding: 8px 12px; border-radius: 6px; border: 1px dashed var(--border);">
+        <span style="font-size: 12px; font-weight: 600; color: #fbbf24;" id="lbl-manual-weather-title">⚙️ 手动指定气象数值:</span>
+        <label style="font-size: 11px; color: var(--subtext); display: flex; align-items: center; gap: 4px;">
+          <span id="lbl-man-temp">气温(°C):</span>
+          <input type="number" id="inp-man-temp" value="22" step="0.5" style="width: 55px; background: #0b172a; border: 1px solid var(--border); color: #fff; padding: 2px 4px; border-radius: 4px; font-size: 11px;">
+        </label>
+        <label style="font-size: 11px; color: var(--subtext); display: flex; align-items: center; gap: 4px;">
+          <span id="lbl-man-ap">体感(°C):</span>
+          <input type="number" id="inp-man-ap" value="22" step="0.5" style="width: 55px; background: #0b172a; border: 1px solid var(--border); color: #fff; padding: 2px 4px; border-radius: 4px; font-size: 11px;">
+        </label>
+        <label style="font-size: 11px; color: var(--subtext); display: flex; align-items: center; gap: 4px;">
+          <span id="lbl-man-cloud">云量(%):</span>
+          <input type="number" id="inp-man-cloud" value="20" min="0" max="100" style="width: 50px; background: #0b172a; border: 1px solid var(--border); color: #fff; padding: 2px 4px; border-radius: 4px; font-size: 11px;">
+        </label>
+        <label style="font-size: 11px; color: var(--subtext); display: flex; align-items: center; gap: 4px;">
+          <span id="lbl-man-desc">天气类型:</span>
+          <select id="inp-man-desc" style="background: #0b172a; border: 1px solid var(--border); color: #fff; padding: 2px 4px; border-radius: 4px; font-size: 11px;">
+            <option value="Clear ☀️">晴天 ☀️</option>
+            <option value="Partly Cloudy ⛅">多云 ⛅</option>
+            <option value="Overcast ☁️">阴天 ☁️</option>
+            <option value="Light Rain 🌧️">雨天 🌧️</option>
+            <option value="Snow ❄️">雪天 ❄️</option>
+          </select>
+        </label>
+        <button class="btn-action" onclick="saveManualWeatherInputs()" id="btn-save-man-weather" style="padding: 2px 8px; font-size: 11px; border-color: var(--primary); color: var(--primary);">💾 应用预设气象</button>
       </div>
     </div>
   </details>
 
   <div class="grid">
     <div class="card">
-      <div class="card-title"><span id="card-title-solar">天体与节气感知</span> <span>☀️</span></div>
+      <div class="card-title">
+        <span id="card-title-solar">天体与节气感知</span>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <button class="btn-action" style="padding: 2px 8px; font-size: 11px;" onclick="refreshWeatherNow()" id="btn-refresh-weather">🔄 刷新气象</button>
+          <span>☀️</span>
+        </div>
+      </div>
       <div class="stat-val" id="solar-term">--</div>
       <div class="stat-sub" id="solar-elevation">太阳高度角: --°</div>
       <div class="stat-sub" id="weather-line" style="color: var(--primary); margin-top: 4px;">⛅ 实时气象: 获取中...</div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);">
+        <span id="lbl-weather-source-title" style="font-size: 11px; color: var(--subtext);">气象数据源:</span>
+        <select id="weather-source-select" onchange="onWeatherSourceChange(this.value)" style="background: #0b172a; border: 1px solid var(--border); color: #f8fafc; padding: 2px 6px; border-radius: 4px; font-size: 11px; outline: none; cursor: pointer;">
+          <option value="auto">🤖 智能自动源</option>
+          <option value="ha_weather">🏠 Home Assistant 本地气象</option>
+          <option value="open_meteo">⛅ Open-Meteo 全球API</option>
+          <option value="wttr_in">🌐 wttr.in 公共气象源</option>
+          <option value="manual">⚙️ 手动指定气象数值</option>
+        </select>
+      </div>
     </div>
     <div class="card">
       <div class="card-title"><span id="card-title-group">分组选择与预测</span> <span>💡</span></div>
@@ -648,33 +763,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="stat-val" id="proc-cpu">CPU: --%</div>
       <div class="stat-sub" id="proc-mem">内存: -- MB | 运行: --</div>
     </div>
-    <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
-      <div>
-        <div class="card-title">
-          <span id="card-title-current">受控灯光状态与勾选控制</span> <span>🎛️</span>
-        </div>
-        <div style="font-size: 12px; color: var(--subtext); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-          <span id="current-group-name" style="font-weight: 500;">--</span>
-          <span id="active-summary" style="font-size: 11px; color: var(--primary); font-weight: 600;">--</span>
-        </div>
-
-        <!-- 首页只显示勾选开启的灯具 -->
-        <div id="active-lights-container" style="display: flex; flex-direction: column; gap: 6px;">
-          <div style="font-size: 12px; color: var(--subtext); padding: 4px 0;">--</div>
-        </div>
+    <div class="card" style="display: flex; flex-direction: column;">
+      <div class="card-title">
+        <span id="card-title-current">受控灯光状态与勾选控制</span> <span>🎛️</span>
+      </div>
+      <div style="font-size: 12px; color: var(--subtext); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+        <span id="current-group-name" style="font-weight: 500;">--</span>
+        <span id="active-summary" style="font-size: 11px; color: var(--primary); font-weight: 600;">--</span>
       </div>
 
-      <!-- 未勾选灯具放入二级菜单 -->
-      <div style="margin-top: 10px;">
-        <details id="inactive-lights-details" class="secondary-menu" style="background: #090e1a; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;">
-          <summary style="font-size: 12px; color: var(--subtext); cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
-            <span id="lbl-inactive-menu">📁 未勾选灯具 (二级菜单)</span>
-            <span id="inactive-badge" style="background: #1e293b; color: #94a3b8; font-size: 11px; padding: 1px 6px; border-radius: 10px; font-weight: 600;">0</span>
-          </summary>
-          <div id="inactive-lights-container" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 140px; overflow-y: auto;">
-            <!-- 动态填充未勾选关闭的灯具 -->
-          </div>
-        </details>
+      <!-- 全量受控灯具直接展示列表 (开灯亮显，关灯暗显，点击直接勾选开关) -->
+      <div id="lights-list-container" style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; padding-right: 2px;">
+        <div style="font-size: 12px; color: var(--subtext); padding: 4px 0;">--</div>
       </div>
     </div>
   </div>
@@ -684,10 +784,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="card-title">
       <span id="card-title-perf-chart">系统性能时序曲线 (CPU % & 内存占用)</span>
       <div class="range-selector">
-        <button class="range-btn active" onclick="changePerfRange(1, this)">1小时</button>
-        <button class="range-btn" onclick="changePerfRange(24, this)">24小时</button>
-        <button class="range-btn" onclick="changePerfRange(168, this)">7天</button>
-        <button class="range-btn" onclick="changePerfRange(720, this)">30天</button>
+        <button id="btn-perf-1h" class="range-btn active" onclick="changePerfRange(1, this)">1小时</button>
+        <button id="btn-perf-24h" class="range-btn" onclick="changePerfRange(24, this)">24小时</button>
+        <button id="btn-perf-7d" class="range-btn" onclick="changePerfRange(168, this)">7天</button>
+        <button id="btn-perf-30d" class="range-btn" onclick="changePerfRange(720, this)">30天</button>
       </div>
     </div>
     <div class="chart-box">
@@ -705,23 +805,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 
   <!-- 24小时自适应偏好曲线表 -->
+  <!-- 24小时自适应偏好曲线表 (支持独立选择灯具与灯组) -->
   <div class="card">
-    <div class="card-title">
-      <span id="table-title">当前分组 24小时自适应曲线</span>
+    <div class="card-title" style="flex-wrap: wrap; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <span id="table-title">24小时自适应偏好曲线</span>
+        <select id="curve-target-select" onchange="onCurveTargetChange(this.value)" style="background: #0b172a; border: 1px solid var(--border); color: #f8fafc; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; outline: none; cursor: pointer;"></select>
+        <span id="curve-target-badge" style="display: none; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 600;"></span>
+      </div>
       <div style="display: flex; gap: 8px; align-items: center;">
         <button class="btn-action" style="padding: 4px 10px; font-size: 12px; border-color: var(--primary); color: var(--primary);" onclick="triggerSyncHAHistory(14)" id="btn-sync-history-dash">🔄 从 HA 历史回溯学习曲线 (14天)</button>
         <span>📈</span>
       </div>
     </div>
-    <div style="max-height: 200px; overflow-y: auto;">
+    <div style="max-height: 240px; overflow-y: auto;">
       <table class="curve-table">
-        <thead>
-          <tr>
+        <thead id="curve-thead">
+          <tr id="curve-thead-tr">
             <th id="th-time">时间点</th>
-            <th id="th-bright">学习亮度</th>
-            <th id="th-cct">学习色温</th>
-            <th id="th-count">协同开灯数</th>
-            <th id="th-samples">调教样本数</th>
+            <th id="th-col1">学习基准亮度</th>
+            <th id="th-col2">学习基准色温</th>
+            <th id="th-col3">建议协同开灯数</th>
+            <th id="th-col4">调教样本数</th>
           </tr>
         </thead>
         <tbody id="curve-tbody"></tbody>
@@ -748,8 +853,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         cardCurrent: "受控灯光状态与勾选控制",
         cardPerfChart: "系统性能时序曲线 (CPU % & 内存占用)",
         cardLogs: "实时运行与学习日志",
-        tableTitle: "24小时自适应曲线",
+        tableTitle: "24小时自适应偏好曲线",
         btnSyncHistoryDash: "🔄 从 HA 历史回溯学习曲线 (14天)",
+        btnRefreshWeather: "🔄 刷新气象",
+        lblWeatherSourceTitle: "气象数据源:",
+        lblSeasonOverrideTitle: "🌾 手动锁定季节因子:",
+        lblWeatherOverrideTitle: "⛅ 手动锁定天气环境倍率:",
+        btnResetFactors: "🔄 恢复全自动解算",
+        lblManualWeatherTitle: "⚙️ 手动指定气象数值:",
+        btnSaveManWeather: "💾 应用预设气象",
         lblInactiveMenu: "📁 未勾选灯具 (二级菜单)",
         btnApplySuggestion: "⚡ 应用建议",
         modeActive: "全主动巡航",
@@ -768,8 +880,66 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         nav3: "加入灯组",
         nav4: "补足信息",
         nav5: "完成启动",
+        wizSub: "智能天体节气自适应全屋照明系统",
+        wizF1Title: "☀️ 自然日光感知",
+        wizF1Desc: "精准解算太阳真实高度角与真太阳时，实现生理昼夜节律自适应光照。",
+        wizF2Title: "🌾 二十四节气温感",
+        wizF2Desc: "夏至清凉、冬至温煦，四季变换动态补偿室内温差氛围感。",
+        wizF3Title: "⚡ 边缘极简低开销",
+        wizF3Desc: "为路由器/Docker定制，纯Python高效引擎，内存仅~40MB。",
+        btnWizStart: "开始配置向导 →",
+        btnWizClose: "进入控制台",
+        wizStep2Title: "🔑 填写 Home Assistant 访问令牌",
+        wizStep2Desc: "GoodLight 通过 WebSocket 与 REST API 和 Home Assistant 实时同步，请填入连接信息。",
+        lblHaUrl: "Home Assistant 地址 (URL):",
+        lblHaToken: "长期访问令牌 (Long-Lived Access Token):",
+        txtTokenTip: "💡 获取方式：在 Home Assistant 点击左下角头像 ➔ 滚动到底部【长期访问令牌】➔ 点击【创建令牌】并复制。",
+        btnTestConn: "🔍 测试连接并自动扫描全屋灯具",
+        btnStep2Next: "下一步：加入灯组 →",
+        btnBack: "← 上一步",
+        wizStep3Title: "💡 自主识别全屋灯具与分组",
+        wizStep3Desc: "系统已自主识别出全屋灯具，请选择各灯具归属的自适应控制分组（不需要托管的灯可设为“不纳入托管”）：",
+        btnAutoGroup: "⚡ 智能自动分组",
+        btnRescan: "🔄 重新扫描",
         txtWizSyncTitle: "🔄 自动从 Home Assistant 历史数据库回溯学习光照习惯 (过去 14 天)",
-        txtWizSyncDesc: "直接读取所选灯具在 Home Assistant 中的真实历史调光与色温样本，瞬间生成个性化自适应昼夜曲线，无需从零等待数周日常学习。"
+        txtWizSyncDesc: "直接读取所选灯具在 Home Assistant 中的真实历史调光与色温样本，瞬间生成个性化自适应昼夜曲线，无需从零等待数周日常学习。",
+        btnStep3Next: "下一步：补足信息 →",
+        wizStep4Title: "🌍 全球地址搜索与环境气象配置",
+        wizStep4Desc: "GoodLight 面向全球用户，输入任何城市或地址即可自动定位经纬度、推算太阳高度角与本地时区。",
+        lblGeoSearch: "全球地址/城市搜索 (支持中文或英文)：",
+        phGeoSearch: "输入全球任意城市，如: London, Tokyo, New York, 巴黎, 武汉, 悉尼...",
+        btnGeoSearch: "🔍 全球搜索",
+        lblHotCities: "热门全球大都市快捷填充：",
+        lblLat: "纬度 (Latitude):",
+        lblLng: "经度 (Longitude):",
+        lblTz: "本地时区 (Timezone):",
+        lblWeatherToggle: "⛅ 启用全球实时气象与温度自适应联动 (基于 Open-Meteo 免 Key 公开气象服务)",
+        txtWeatherDesc: "• <strong>环境气温色温补偿</strong>：寒冷时自动增添温暖色调 (-250K)，炎热时增加冷静清爽感 (+200K)<br>• <strong>阴雨云量采光补偿</strong>：白天厚重云层 (云量>50%) 自动调高室内亮度，补偿天然采光不足",
+        btnStep4Next: "下一步：完成确认 →",
+        wizStep5Title: "🎉 配置完成，准备启动！",
+        wizStep5Desc: "请核对以下配置清单，确认无误后点击下方按钮立即启动 GoodLight 自适应光照系统：",
+        lblSumUrl: "Home Assistant 地址:",
+        lblSumToken: "长期访问令牌:",
+        lblSumGroups: "自适应托管灯组:",
+        lblSumLoc: "地理坐标与时区:",
+        lblSumWeather: "全球气象与温度感知:",
+        lblSumHistory: "HA 历史数据回溯:",
+        wizFlexGuideTitle: "💡 硬件与开关推荐设置（针对凌动/自回弹开关与实体开关）",
+        wizFlexGuideBody: "若你使用<strong>凌动开关（回弹脉冲开关）</strong>或日常通过物理开关通电开灯：<br>• <strong>痛点原因</strong>：开灯瞬间灯泡硬件优先读取芯片本地记忆，导致先亮起旧灯光，数百毫秒后才跳变到 GoodLight 节律曲线。<br>• <strong>官方推荐配置（进入米家/厂商 App ➔ 灯具「默认状态」菜单）</strong>：<br>&nbsp;&nbsp;① <strong>关闭「恢复断电前灯光」</strong>（彻底杜绝深夜开灯被上次白天的高亮白光闪瞎）；<br>&nbsp;&nbsp;② <strong>开启「默认灯光」</strong>，将灯光手动调至<strong>最低亮度（1% 或 最低滑块）+ 最暖色温（3000K/2700K）</strong>并保存为默认灯光。<br>• <strong>实现体验</strong>：深夜开灯 0 毫秒即是护眼微光，完全无感不刺眼；白天开灯如同<strong>日出软启动（从 1% 自然渐变升至明亮日光）</strong>，极具高级感！",
+        btnWizFinish: "🎉 保存并启动 GoodLight 自适应巡航",
+        btnBackModify: "← 返回修改",
+        lblDebugTitle: "🛠️ 开发者与调试工具 (Debug Tools)",
+        lblDebugPill: "时区自由选择 / 仿真时间测试",
+        lblDebugTz: "🌐 时区自由选择:",
+        lblDebugSim: "⏳ 时间微调仿真:",
+        btnResetTime: "重置为实时时间",
+        btnFilterAll: "📊 双轴综合",
+        btnFilterBright: "🌿 仅看亮度",
+        btnFilterCct: "☀️ 仅看色温",
+        range1h: "1小时",
+        range24h: "24小时",
+        range7d: "7天",
+        range30d: "30天"
       },
       en: {
         pageTitle: "GoodLight Dashboard",
@@ -782,8 +952,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         cardCurrent: "Light Controls & Status",
         cardPerfChart: "System Performance Timeline (CPU % & RAM)",
         cardLogs: "Live Cruise & Learning Logs",
-        tableTitle: "24-Hour Adaptive Curve Profile",
+        tableTitle: "24-Hour Adaptive Circadian Curve",
         btnSyncHistoryDash: "🔄 Sync HA History (14 Days)",
+        btnRefreshWeather: "🔄 Refresh Weather",
+        lblWeatherSourceTitle: "Weather Source:",
+        lblSeasonOverrideTitle: "🌾 Manual Season Factor:",
+        lblWeatherOverrideTitle: "⛅ Manual Weather Boost:",
+        btnResetFactors: "🔄 Reset to Auto Factors",
+        lblManualWeatherTitle: "⚙️ Manual Weather Parameters:",
+        btnSaveManWeather: "💾 Apply Manual Weather",
         lblInactiveMenu: "📁 Inactive Lights (Secondary Menu)",
         btnApplySuggestion: "⚡ Apply Suggestion",
         modeActive: "Active Cruise",
@@ -802,8 +979,66 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         nav3: "Group Lights",
         nav4: "Location & Weather",
         nav5: "Launch",
+        wizSub: "Autonomous Circadian & Seasonal Whole-House Lighting System",
+        wizF1Title: "☀️ Solar Elevation Tracking",
+        wizF1Desc: "Calculates true solar elevation angles and solar time for natural circadian rhythms.",
+        wizF2Title: "🌾 24 Solar Terms & Seasons",
+        wizF2Desc: "Cool tones in summer and cozy warm amber in winter with dynamic seasonal compensation.",
+        wizF3Title: "⚡ Edge-Native & Lightweight",
+        wizF3Desc: "Built for routers & Docker, pure Python event engine with <40MB RAM footprint.",
+        btnWizStart: "Start Setup Wizard →",
+        btnWizClose: "Enter Dashboard",
+        wizStep2Title: "🔑 Enter Home Assistant Access Token",
+        wizStep2Desc: "GoodLight connects via WebSocket & REST API to sync with Home Assistant in real time.",
+        lblHaUrl: "Home Assistant URL:",
+        lblHaToken: "Long-Lived Access Token:",
+        txtTokenTip: "💡 How to get: In Home Assistant, click your profile in bottom-left ➔ scroll to 'Long-Lived Access Tokens' ➔ Create Token and copy.",
+        btnTestConn: "🔍 Test Connection & Scan Fixtures",
+        btnStep2Next: "Next: Group Lights →",
+        btnBack: "← Back",
+        wizStep3Title: "💡 Discover Fixtures & Grouping",
+        wizStep3Desc: "All smart lights discovered. Assign each light to an adaptive circadian group:",
+        btnAutoGroup: "⚡ Auto Group",
+        btnRescan: "🔄 Rescan",
         txtWizSyncTitle: "🔄 Auto-Backfill Learning from Home Assistant History (Past 14 Days)",
-        txtWizSyncDesc: "Directly parses your past 14 days of lighting adjustments from HA to bootstrap your personalized circadian curves instantly without waiting for weeks."
+        txtWizSyncDesc: "Directly parses your past 14 days of lighting adjustments from HA to bootstrap your personalized circadian curves instantly without waiting for weeks.",
+        btnStep3Next: "Next: Location & Weather →",
+        wizStep4Title: "🌍 Global Geocoding & Weather Setup",
+        wizStep4Desc: "Enter any city or address worldwide to automatically resolve latitude, longitude, and timezone.",
+        lblGeoSearch: "Global City / Address Search:",
+        phGeoSearch: "Search any city worldwide, e.g., London, Tokyo, New York, Paris, Sydney...",
+        btnGeoSearch: "🔍 Search",
+        lblHotCities: "Quick Fill Major Cities:",
+        lblLat: "Latitude:",
+        lblLng: "Longitude:",
+        lblTz: "Local Timezone:",
+        lblWeatherToggle: "⛅ Enable Global Weather & Ambient Temperature Adaptation (Open-Meteo Zero-Token)",
+        txtWeatherDesc: "• <strong>Thermal CCT Compensation</strong>: Warm amber (-250K) in cold spells, crisp clarity (+200K) in summer heat.<br>• <strong>Cloud Cover Compensation</strong>: Up to +20% brightness boost under heavy overcast (>50%).",
+        btnStep4Next: "Next: Review & Launch →",
+        wizStep5Title: "🎉 Configuration Complete & Ready to Launch!",
+        wizStep5Desc: "Please review your configuration below. Click the button to launch GoodLight Circadian Engine:",
+        lblSumUrl: "Home Assistant URL:",
+        lblSumToken: "Long-Lived Access Token:",
+        lblSumGroups: "Adaptive Light Groups:",
+        lblSumLoc: "Coordinates & Timezone:",
+        lblSumWeather: "Global Weather & Thermal Adaptation:",
+        lblSumHistory: "HA History Backfill:",
+        wizFlexGuideTitle: "💡 Pro Tip: Recommended Switch & Default Light Setup (For Flex / Momentary Switches)",
+        wizFlexGuideBody: "If you use <strong>Flex / Momentary bounce switches</strong> or frequently turn lights on via wall switches:<br>• <strong>Why the jump happens</strong>: At the instant of power-on, the fixture's local chip restores previous memory state before GoodLight's circadian target arrives over the network ~300ms later.<br>• <strong>Recommended Best Practice (In Mi Home / Vendor App ➔ Light 'Default State' Menu)</strong>:<br>&nbsp;&nbsp;① <strong>Turn OFF 'Restore Previous State'</strong> (prevents blinding flash of daytime bright light at night);<br>&nbsp;&nbsp;② <strong>Turn ON 'Default Light'</strong>, manually adjust light to <strong>minimum brightness (1%) + warmest color temp (3000K/2700K)</strong>, and save as Default Light.<br>• <strong>The Result</strong>: Nighttime power-on instantly lights up in soothing eye-protection ambient light with zero glare; Daytime power-on acts like a luxurious <strong>hotel Soft-Start / Sunrise Fade-In (gently ramping up from 1% to full daylight)</strong>!",
+        btnWizFinish: "🎉 Save & Launch GoodLight Cruise",
+        btnBackModify: "← Back",
+        lblDebugTitle: "🛠️ Developer & Debug Tools",
+        lblDebugPill: "Timezone / Simulation Clock Tuning",
+        lblDebugTz: "🌐 Timezone:",
+        lblDebugSim: "⏳ Simulation Clock:",
+        btnResetTime: "Reset to Live Time",
+        btnFilterAll: "📊 Dual-Axis",
+        btnFilterBright: "🌿 Brightness",
+        btnFilterCct: "☀️ Color Temp",
+        range1h: "1h",
+        range24h: "24h",
+        range7d: "7d",
+        range30d: "30d"
       }
     };
 
@@ -827,6 +1062,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     function applyTranslations() {
       const t = I18N[currentLang] || I18N.zh;
       const el = (id, text) => { const node = document.getElementById(id); if (node) node.innerText = text; };
+      const elHtml = (id, html) => { const node = document.getElementById(id); if (node) node.innerHTML = html; };
 
       el('page-title', t.pageTitle);
       el('btn-lang-toggle', t.langBtn);
@@ -840,15 +1076,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       el('card-title-current', t.cardCurrent);
       el('card-title-perf-chart', t.cardPerfChart);
       el('card-title-logs', t.cardLogs);
+      el('table-title', t.tableTitle);
       el('btn-sync-history-dash', t.btnSyncHistoryDash);
+      el('btn-refresh-weather', t.btnRefreshWeather);
+      el('lbl-weather-source-title', t.lblWeatherSourceTitle);
+      el('lbl-season-override-title', t.lblSeasonOverrideTitle);
+      el('lbl-weather-override-title', t.lblWeatherOverrideTitle);
+      el('btn-reset-factors', t.btnResetFactors);
+      el('lbl-manual-weather-title', t.lblManualWeatherTitle);
+      el('btn-save-man-weather', t.btnSaveManWeather);
       el('lbl-inactive-menu', t.lblInactiveMenu);
       el('btn-apply-suggestion', t.btnApplySuggestion);
 
       el('th-time', t.thTime);
-      el('th-bright', t.thBright);
-      el('th-cct', t.thCct);
-      el('th-count', t.thCount);
-      el('th-samples', t.thSamples);
 
       el('nav-text-1', t.nav1);
       el('nav-text-2', t.nav2);
@@ -856,8 +1096,89 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       el('nav-text-4', t.nav4);
       el('nav-text-5', t.nav5);
 
+      // Wizard Step 1
+      el('wiz-sub', t.wizSub);
+      el('wiz-f1-title', t.wizF1Title);
+      el('wiz-f1-desc', t.wizF1Desc);
+      el('wiz-f2-title', t.wizF2Title);
+      el('wiz-f2-desc', t.wizF2Desc);
+      el('wiz-f3-title', t.wizF3Title);
+      el('wiz-f3-desc', t.wizF3Desc);
+      el('btn-wiz-start', t.btnWizStart);
+      el('btn-wiz-close', t.btnWizClose);
+
+      // Wizard Step 2
+      el('wiz-step2-title', t.wizStep2Title);
+      el('wiz-step2-desc', t.wizStep2Desc);
+      el('lbl-ha-url', t.lblHaUrl);
+      el('lbl-ha-token', t.lblHaToken);
+      el('txt-token-tip', t.txtTokenTip);
+      el('btn-wiz-test', t.btnTestConn);
+      el('btn-step2-back', t.btnBack);
+      el('btn-step2-next', t.btnStep2Next);
+
+      // Wizard Step 3
+      el('wiz-step3-title', t.wizStep3Title);
+      el('wiz-step3-desc', t.wizStep3Desc);
+      el('btn-auto-group', t.btnAutoGroup);
+      el('btn-rescan-lights', t.btnRescan);
       el('txt-wiz-sync-title', t.txtWizSyncTitle);
       el('txt-wiz-sync-desc', t.txtWizSyncDesc);
+      el('btn-step3-back', t.btnBack);
+      el('btn-step3-next', t.btnStep3Next);
+
+      // Wizard Step 4
+      el('wiz-step4-title', t.wizStep4Title);
+      el('wiz-step4-desc', t.wizStep4Desc);
+      el('lbl-geo-search', t.lblGeoSearch);
+      const geoInput = document.getElementById('wiz-geo-search');
+      if (geoInput) geoInput.placeholder = t.phGeoSearch;
+      el('btn-geo-search', t.btnGeoSearch);
+      el('lbl-hot-cities', t.lblHotCities);
+      el('lbl-lat', t.lblLat);
+      el('lbl-lng', t.lblLng);
+      el('lbl-tz', t.lblTz);
+      el('lbl-weather-toggle', t.lblWeatherToggle);
+      elHtml('txt-weather-desc', t.txtWeatherDesc);
+      el('btn-step4-back', t.btnBack);
+      el('btn-step4-next', t.btnStep4Next);
+
+      // Wizard Step 5
+      el('wiz-step5-title', t.wizStep5Title);
+      el('wiz-step5-desc', t.wizStep5Desc);
+      el('lbl-sum-url', t.lblSumUrl);
+      el('lbl-sum-token', t.lblSumToken);
+      el('lbl-sum-groups', t.lblSumGroups);
+      el('lbl-sum-loc', t.lblSumLoc);
+      el('lbl-sum-weather', t.lblSumWeather);
+      el('lbl-sum-history', t.lblSumHistory);
+      el('wiz-flex-guide-title', t.wizFlexGuideTitle);
+      elHtml('wiz-flex-guide-body', t.wizFlexGuideBody);
+      el('btn-step5-back', t.btnBackModify);
+      el('btn-wiz-finish', t.btnWizFinish);
+
+      // Debug Card
+      el('lbl-debug-title', t.lblDebugTitle);
+      el('lbl-debug-pill', t.lblDebugPill);
+      el('lbl-debug-tz', t.lblDebugTz);
+      el('lbl-debug-sim', t.lblDebugSim);
+      el('btn-reset-time', t.btnResetTime);
+
+      // Perf Range Buttons
+      el('btn-perf-1h', t.range1h);
+      el('btn-perf-24h', t.range24h);
+      el('btn-perf-7d', t.range7d);
+      el('btn-perf-30d', t.range30d);
+
+      if (currentStep === 3 && discoveredLights.length > 0) {
+        renderDiscoveredLights();
+      }
+      if (currentStep === 5) {
+        renderSummary();
+      }
+
+      if (typeof updateCurveTargetSelect === 'function') updateCurveTargetSelect();
+      if (typeof renderCurveTable === 'function') renderCurveTable();
     }
 
     async function triggerSyncHAHistory(days) {
@@ -1053,9 +1374,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         card.className = 'light-item-card';
 
         let badges = '';
-        if (light.has_brightness) badges += '<span class="tag-badge tag-green" style="margin-right:4px;">☀️ 调光</span>';
-        if (light.has_color_temp) badges += '<span class="tag-badge tag-blue" style="margin-right:4px;">🌈 色温</span>';
-        if (!light.has_brightness && !light.has_color_temp) badges += '<span class="tag-badge tag-amber" style="margin-right:4px;">💡 开关</span>';
+        if (light.has_brightness) badges += `<span class="tag-badge tag-green" style="margin-right:4px;">${currentLang==='en'?'☀️ Dimmable':'☀️ 调光'}</span>`;
+        if (light.has_color_temp) badges += `<span class="tag-badge tag-blue" style="margin-right:4px;">${currentLang==='en'?'🌈 Tunable White':'🌈 色温'}</span>`;
+        if (!light.has_brightness && !light.has_color_temp) badges += `<span class="tag-badge tag-amber" style="margin-right:4px;">${currentLang==='en'?'💡 On/Off Switch':'💡 开关'}</span>`;
 
         const stateColor = (light.state === 'on') ? 'var(--success)' : 'var(--subtext)';
 
@@ -1069,12 +1390,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div>${badges}</div>
           </div>
           <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 12px; color: var(--subtext);">分配到分组:</span>
+            <span style="font-size: 12px; color: var(--subtext);">${currentLang==='en'?'Assign to Group:':'分配到分组:'}</span>
             <select class="light-group-select" data-ent="${ent}" data-name="${light.name}" onchange="onAssignLightGroup('${ent}', this.value, '${light.name}', ${light.min_kelvin}, ${light.max_kelvin})">
-              <option value="living_room_main" ${currentGroup==='living_room_main'?'selected':''}>🛋️ 客厅主灯组</option>
-              <option value="living_room_ambient" ${currentGroup==='living_room_ambient'?'selected':''}>✨ 客厅氛围灯组</option>
-              <option value="desk_lamp" ${currentGroup==='desk_lamp'?'selected':''}>🖥️ 工作台/台灯组</option>
-              <option value="none" ${currentGroup==='none'?'selected':''}>🚫 不纳入自适应托管</option>
+              <option value="living_room_main" ${currentGroup==='living_room_main'?'selected':''}>${currentLang==='en'?'🛋️ Living Room Main':'🛋️ 客厅主灯组'}</option>
+              <option value="living_room_ambient" ${currentGroup==='living_room_ambient'?'selected':''}>${currentLang==='en'?'✨ Living Room Ambient':'✨ 客厅氛围灯组'}</option>
+              <option value="desk_lamp" ${currentGroup==='desk_lamp'?'selected':''}>${currentLang==='en'?'🖥️ Desk / Work Lamp':'🖥️ 工作台/台灯组'}</option>
+              <option value="none" ${currentGroup==='none'?'selected':''}>${currentLang==='en'?'🚫 Do Not Manage':'🚫 不纳入自适应托管'}</option>
             </select>
           </div>
         `;
@@ -1207,17 +1528,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const token = document.getElementById('wiz-ha-token').value;
       const lat = document.getElementById('wiz-lat').value;
       const lng = document.getElementById('wiz-lng').value;
-      const tz = document.getElementById('wiz-tz').value;
+      const tz = parseFloat(document.getElementById('wiz-tz').value);
       const weatherOn = document.getElementById('wiz-weather-toggle').checked;
 
       document.getElementById('summary-url').innerText = url;
-      document.getElementById('summary-token').innerText = token ? (token.substring(0, 10) + '...' + token.slice(-8)) : (existingConfig.has_token ? '保持现有已配置令牌' : '未提供');
+      document.getElementById('summary-token').innerText = token ? (token.substring(0, 10) + '...' + token.slice(-8)) : (existingConfig.has_token ? (currentLang==='en'?'Existing Configured Token':'保持现有已配置令牌') : (currentLang==='en'?'Not provided':'未提供'));
       
       const assignedEnts = Object.keys(lightGroupAssignments);
       const groupsFound = new Set(Object.values(lightGroupAssignments).map(v => v.group_id));
-      document.getElementById('summary-groups').innerText = `${assignedEnts.length} 盏灯具分配在 ${groupsFound.size} 个独立受控组中`;
-      document.getElementById('summary-loc').innerText = `纬度: ${lat}°, 经度: ${lng}°, 时区: UTC+${tz}`;
-      document.getElementById('summary-weather').innerText = weatherOn ? '已启用 (基于 Open-Meteo 实时气温与云量双重光补偿)' : '已停用';
+      document.getElementById('summary-groups').innerText = (currentLang === 'en')
+        ? `${assignedEnts.length} fixture(s) assigned across ${groupsFound.size} independent group(s)`
+        : `${assignedEnts.length} 盏灯具分配在 ${groupsFound.size} 个独立受控组中`;
+      document.getElementById('summary-loc').innerText = (currentLang === 'en')
+        ? `Lat: ${lat}°, Lng: ${lng}°, Timezone: UTC${tz>=0?'+':''}${tz}`
+        : `纬度: ${lat}°, 经度: ${lng}°, 时区: UTC${tz>=0?'+':''}${tz}`;
+      document.getElementById('summary-weather').innerText = weatherOn 
+        ? ((currentLang === 'en') ? 'Enabled (Open-Meteo real-time temp & cloud compensation)' : '已启用 (基于 Open-Meteo 实时气温与云量双重光补偿)') 
+        : ((currentLang === 'en') ? 'Disabled' : '已停用');
 
       const syncHistoryOn = document.getElementById('wiz-sync-history-toggle') ? document.getElementById('wiz-sync-history-toggle').checked : false;
       const historySummaryEl = document.getElementById('summary-history');
@@ -1322,6 +1649,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let perfChart = null;
     let lightCharts = {};
     let selectedGroupId = null;
+    let selectedCurveTarget = null;
     let allLightsData = [];
     let groupsData = {};
 
@@ -1413,7 +1741,140 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     function onGroupChange(gid) {
       selectedGroupId = gid;
+      if (gid !== '__all__' && groupsData[gid]) {
+        selectedCurveTarget = `group:${gid}`;
+        const curveSelect = document.getElementById('curve-target-select');
+        if (curveSelect) curveSelect.value = selectedCurveTarget;
+      }
       renderCurrentGroup();
+      renderCurveTable();
+    }
+
+    function onCurveTargetChange(val) {
+      selectedCurveTarget = val;
+      renderCurveTable();
+    }
+
+    async function refreshWeatherNow() {
+      const btn = document.getElementById('btn-refresh-weather');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = currentLang === 'en' ? '⏳ Syncing...' : '⏳ 正在同步...';
+      }
+      try {
+        const resp = await fetch('/api/control/weather_refresh', { method: 'POST' });
+        const res = await resp.json();
+        if (res.ok) {
+          await updateDashboard();
+        }
+      } catch (e) {
+        console.error('Refresh weather error:', e);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = currentLang === 'en' ? '🔄 Refresh Weather' : '🔄 刷新气象';
+        }
+      }
+    }
+
+    async function onWeatherSourceChange(provider) {
+      const manualRow = document.getElementById('manual-weather-inputs-row');
+      if (manualRow) {
+        manualRow.style.display = (provider === 'manual') ? 'flex' : 'none';
+      }
+      try {
+        const resp = await fetch('/api/control/weather_source', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: provider })
+        });
+        const res = await resp.json();
+        if (res.ok) {
+          await updateDashboard();
+        }
+      } catch (e) {
+        console.error('Change weather source error:', e);
+      }
+    }
+
+    async function saveManualWeatherInputs() {
+      const temp = parseFloat(document.getElementById('inp-man-temp').value);
+      const ap = parseFloat(document.getElementById('inp-man-ap').value);
+      const cloud = parseInt(document.getElementById('inp-man-cloud').value, 10);
+      const desc = document.getElementById('inp-man-desc').value;
+
+      try {
+        const resp = await fetch('/api/control/weather_source', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: 'manual',
+            manual: { temp: temp, apparent_temp: ap, cloud_cover: cloud, desc: desc }
+          })
+        });
+        const res = await resp.json();
+        if (res.ok) {
+          await updateDashboard();
+        }
+      } catch (e) {
+        console.error('Save manual weather error:', e);
+      }
+    }
+
+    function toggleSeasonOverride(checked) {
+      const slider = document.getElementById('rng-season-factor');
+      slider.disabled = !checked;
+      applyFactorsOverride();
+    }
+
+    function toggleWeatherOverride(checked) {
+      const slider = document.getElementById('rng-weather-factor');
+      slider.disabled = !checked;
+      applyFactorsOverride();
+    }
+
+    function onSeasonSliderInput(val) {
+      const v = parseFloat(val);
+      const txt = (v >= 0 ? '+' : '') + v.toFixed(2);
+      const kOffset = Math.round(v * 300);
+      document.getElementById('val-season-factor').innerText = `${txt} (${kOffset >= 0 ? '+' : ''}${kOffset}K)`;
+    }
+
+    function onWeatherSliderInput(val) {
+      const v = parseFloat(val);
+      document.getElementById('val-weather-factor').innerText = `${v.toFixed(2)}x`;
+    }
+
+    async function applyFactorsOverride() {
+      const chkSeason = document.getElementById('chk-season-override').checked;
+      const chkWeather = document.getElementById('chk-weather-override').checked;
+      const seasonVal = chkSeason ? parseFloat(document.getElementById('rng-season-factor').value) : null;
+      const weatherVal = chkWeather ? parseFloat(document.getElementById('rng-weather-factor').value) : null;
+
+      try {
+        const resp = await fetch('/api/control/factors_override', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            season_factor: seasonVal,
+            weather_factor: weatherVal
+          })
+        });
+        const res = await resp.json();
+        if (res.ok) {
+          await updateDashboard();
+        }
+      } catch (e) {
+        console.error('Apply factors override error:', e);
+      }
+    }
+
+    async function resetFactorsToAuto() {
+      document.getElementById('chk-season-override').checked = false;
+      document.getElementById('chk-weather-override').checked = false;
+      document.getElementById('rng-season-factor').disabled = true;
+      document.getElementById('rng-weather-factor').disabled = true;
+      await applyFactorsOverride();
     }
 
     async function updatePerfData() {
@@ -1431,6 +1892,103 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
 
+    let lightViewFilters = {};
+
+    function getCCTDesc(k) {
+      if (!k) return '--';
+      if (currentLang === 'en') {
+        if (k < 2800) return 'Warm Candlelight 🕯️';
+        if (k < 3200) return 'Warm Amber 🌅';
+        if (k < 4000) return 'Warm White 🌤️';
+        if (k < 5000) return 'Neutral Daylight ☀️';
+        return 'Cool White ❄️';
+      }
+      if (k < 2800) return '暖黄烛光 🕯️';
+      if (k < 3200) return '暖黄光 🌅';
+      if (k < 4000) return '暖白光 🌤️';
+      if (k < 5000) return '自然中性光 ☀️';
+      return '冷白日光 ❄️';
+    }
+
+    function getCCTColor(k) {
+      if (!k) return 'var(--subtext)';
+      if (k < 3000) return '#f59e0b';
+      if (k < 4000) return '#fbbf24';
+      if (k < 5000) return '#fef08a';
+      return '#38bdf8';
+    }
+
+    function setChartFilter(entityId, filterType) {
+      lightViewFilters[entityId] = filterType;
+      const safeId = entityId.replace(/[^a-zA-Z0-9_]/g, '_');
+      ['all', 'b', 'c'].forEach(f => {
+        const btn = document.getElementById(`fbtn-${safeId}-${f}`);
+        if (btn) btn.classList.toggle('active', f === filterType);
+      });
+      const chart = lightCharts[entityId];
+      if (!chart) return;
+
+      const hasColorTemp = chart.data.datasets[1] && chart.data.datasets[1]._hasColorTemp;
+      if (filterType === 'b') {
+        chart.data.datasets[0].hidden = false;
+        if (chart.data.datasets[1]) chart.data.datasets[1].hidden = true;
+        chart.options.scales.y.display = true;
+        if (chart.options.scales.y1) chart.options.scales.y1.display = false;
+      } else if (filterType === 'c') {
+        chart.data.datasets[0].hidden = true;
+        if (chart.data.datasets[1]) chart.data.datasets[1].hidden = !hasColorTemp;
+        chart.options.scales.y.display = false;
+        if (chart.options.scales.y1) chart.options.scales.y1.display = hasColorTemp;
+      } else {
+        chart.data.datasets[0].hidden = false;
+        if (chart.data.datasets[1]) chart.data.datasets[1].hidden = !hasColorTemp;
+        chart.options.scales.y.display = true;
+        if (chart.options.scales.y1) chart.options.scales.y1.display = hasColorTemp;
+      }
+      chart.update();
+    }
+
+    function renderLightPills(safeId, hData) {
+      const pillsBox = document.getElementById(`stats-pills-${safeId}`);
+      if (!pillsBox) return;
+
+      const isStateOn = hData.state === 'on';
+      const stateBadge = isStateOn 
+        ? `<span style="font-size: 11px; background: rgba(74, 222, 128, 0.15); color: var(--success); padding: 2px 8px; border-radius: 6px; font-weight: 600;">● ${currentLang === 'en' ? 'On' : '开启中'}</span>`
+        : `<span style="font-size: 11px; background: rgba(136, 146, 176, 0.15); color: var(--subtext); padding: 2px 8px; border-radius: 6px;">○ ${currentLang === 'en' ? 'Off' : '已关灯'}</span>`;
+
+      const brightPrefix = currentLang === 'en' ? '🔆 Live Brightness: ' : '🔆 实时亮度: ';
+      const switchOnly = currentLang === 'en' ? '⚡ Switch Only' : '⚡ 开关型灯具';
+      const brightBadge = hData.has_brightness
+        ? `<span style="font-size: 11px; background: rgba(74, 222, 128, 0.12); color: #4ade80; padding: 2px 8px; border-radius: 6px; font-weight: 600;">${brightPrefix}${hData.current_brightness || 0}%</span>`
+        : `<span style="font-size: 11px; background: rgba(56, 189, 248, 0.12); color: var(--primary); padding: 2px 8px; border-radius: 6px;">${switchOnly}</span>`;
+
+      const k = hData.current_color_temp;
+      const cctPrefix = currentLang === 'en' ? '🌡️ Live CCT: ' : '🌡️ 实时色温: ';
+      const cctBadge = (hData.has_color_temp && k)
+        ? `<span style="font-size: 11px; background: rgba(251, 191, 36, 0.12); color: ${getCCTColor(k)}; padding: 2px 8px; border-radius: 6px; font-weight: 600;">${cctPrefix}${k}K (${getCCTDesc(k)})</span>`
+        : '';
+
+      let modeStr = '';
+      let modeStyle = 'background: rgba(56, 189, 248, 0.15); color: #38bdf8;';
+      if (!isStateOn) {
+        modeStr = currentLang === 'en' ? '💤 Standby (Off)' : '💤 待机中 (未开启)';
+        modeStyle = 'background: rgba(148, 163, 184, 0.12); color: #94a3b8;';
+      } else if (hData.mode === 'passive') {
+        modeStr = currentLang === 'en' ? '🧠 Passive Learn' : '🧠 被动学习';
+        modeStyle = 'background: rgba(168, 85, 247, 0.15); color: #c084fc;';
+      } else if (hData.mode === 'turn_on') {
+        modeStr = currentLang === 'en' ? '⚡ Turn-On Only' : '⚡ 打断模式';
+        modeStyle = 'background: rgba(245, 158, 11, 0.15); color: #f59e0b;';
+      } else {
+        modeStr = currentLang === 'en' ? '🌊 Active Cruise' : '🌊 全主动巡航';
+        modeStyle = 'background: rgba(56, 189, 248, 0.15); color: #38bdf8;';
+      }
+      const modeBadge = `<span style="font-size: 11px; ${modeStyle} padding: 2px 8px; border-radius: 6px; font-weight: 600;">${modeStr}</span>`;
+
+      pillsBox.innerHTML = `${stateBadge} ${brightBadge} ${cctBadge} ${modeBadge}`;
+    }
+
     async function updateLightData() {
       try {
         const resp = await fetch(`/api/history/lights?hours=${currentLightHours}`);
@@ -1440,19 +1998,36 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         for (const [entityId, hData] of Object.entries(data)) {
           let safeId = entityId.replace(/[^a-zA-Z0-9_]/g, '_');
           let card = document.getElementById(`card-${safeId}`);
+          let currFilter = lightViewFilters[entityId] || 'all';
 
           if (!card) {
             card = document.createElement('div');
             card.className = 'card';
             card.id = `card-${safeId}`;
+            const hasColorTemp = hData.color_temp.some(v => v !== null && v > 0);
+
             card.innerHTML = `
-              <div class="card-title">
-                <span>💡 灯具曲线: ${entityId} (亮度 & 色温)</span>
-                <div class="range-selector">
-                  <button class="range-btn light-range-btn ${currentLightHours==1?'active':''}" onclick="changeLightRange(1, this)">1小时</button>
-                  <button class="range-btn light-range-btn ${currentLightHours==24?'active':''}" onclick="changeLightRange(24, this)">24小时</button>
-                  <button class="range-btn light-range-btn ${currentLightHours==168?'active':''}" onclick="changeLightRange(168, this)">7天</button>
-                  <button class="range-btn light-range-btn ${currentLightHours==720?'active':''}" onclick="changeLightRange(720, this)">30天</button>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+                <div>
+                  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-size: 16px; font-weight: 700; color: #f8fafc;" id="title-name-${safeId}">💡 ${hData.friendly_name || entityId}</span>
+                    <span style="font-size: 11px; background: rgba(56, 189, 248, 0.12); color: var(--primary); padding: 2px 8px; border-radius: 4px; font-weight: 600;">${hData.group_name || '受控灯具'}</span>
+                    <span style="font-size: 11px; background: rgba(136, 146, 176, 0.15); color: var(--subtext); padding: 2px 6px; border-radius: 4px; font-family: monospace;">${entityId}</span>
+                  </div>
+                  <div id="stats-pills-${safeId}" style="display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap;"></div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                  <div class="view-filter-bar" id="filter-bar-${safeId}">
+                    <button class="filter-btn active" id="fbtn-${safeId}-all" onclick="setChartFilter('${entityId}', 'all')">${I18N[currentLang]?.btnFilterAll || '📊 双轴综合'}</button>
+                    <button class="filter-btn" id="fbtn-${safeId}-b" onclick="setChartFilter('${entityId}', 'b')">${I18N[currentLang]?.btnFilterBright || '🌿 仅看亮度'}</button>
+                    ${hasColorTemp ? `<button class="filter-btn" id="fbtn-${safeId}-c" onclick="setChartFilter('${entityId}', 'c')">${I18N[currentLang]?.btnFilterCct || '☀️ 仅看色温'}</button>` : ''}
+                  </div>
+                  <div class="range-selector">
+                    <button class="range-btn light-range-btn ${currentLightHours==1?'active':''}" onclick="changeLightRange(1, this)">${I18N[currentLang]?.range1h || '1小时'}</button>
+                    <button class="range-btn light-range-btn ${currentLightHours==24?'active':''}" onclick="changeLightRange(24, this)">${I18N[currentLang]?.range24h || '24小时'}</button>
+                    <button class="range-btn light-range-btn ${currentLightHours==168?'active':''}" onclick="changeLightRange(168, this)">${I18N[currentLang]?.range7d || '7天'}</button>
+                    <button class="range-btn light-range-btn ${currentLightHours==720?'active':''}" onclick="changeLightRange(720, this)">${I18N[currentLang]?.range30d || '30天'}</button>
+                  </div>
                 </div>
               </div>
               <div class="chart-box">
@@ -1460,31 +2035,40 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               </div>
             `;
             container.appendChild(card);
+            renderLightPills(safeId, hData);
 
             const ctx = document.getElementById(`canvas-${safeId}`).getContext('2d');
-            const hasColorTemp = hData.color_temp.some(v => v !== null && v > 0);
             lightCharts[entityId] = new Chart(ctx, {
               type: 'line',
               data: {
                 labels: hData.labels,
                 datasets: [
                   {
-                    label: '亮度 (%)',
+                    label: (currentLang === 'en' ? 'Brightness (%)' : '亮度 (%)'),
                     data: hData.brightness,
                     borderColor: '#4ade80',
-                    backgroundColor: 'rgba(74, 222, 128, 0.1)',
-                    tension: 0.3,
+                    backgroundColor: 'rgba(74, 222, 128, 0.12)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.35,
                     spanGaps: true,
+                    pointRadius: hData.labels.length > 50 ? 0 : 2,
+                    pointHoverRadius: 5,
                     yAxisID: 'y'
                   },
                   {
-                    label: '色温 (K)',
+                    label: (currentLang === 'en' ? 'Color Temp (K)' : '色温 (K)'),
                     data: hData.color_temp,
-                    borderColor: '#fb7185',
-                    backgroundColor: 'rgba(251, 113, 133, 0.1)',
-                    tension: 0.3,
+                    borderColor: '#fbbf24',
+                    backgroundColor: 'rgba(251, 191, 36, 0.12)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.35,
                     spanGaps: true,
                     hidden: !hasColorTemp,
+                    _hasColorTemp: hasColorTemp,
+                    pointRadius: hData.labels.length > 50 ? 0 : 2,
+                    pointHoverRadius: 5,
                     yAxisID: 'y1'
                   }
                 ]
@@ -1494,31 +2078,75 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 scales: {
-                  x: { grid: { color: '#1e293b' }, ticks: { color: '#8892b0' } },
+                  x: {
+                    grid: { color: '#1e293b' },
+                    ticks: { color: '#8892b0', maxTicksLimit: 8, maxRotation: 0, autoSkip: true }
+                  },
                   y: {
                     type: 'linear', display: true, position: 'left',
                     min: 0, max: 100,
-                    title: { display: true, text: '亮度 (%)', color: '#4ade80' },
-                    grid: { color: '#1e293b' }, ticks: { color: '#8892b0' }
+                    title: { display: true, text: '亮度 (%)', color: '#4ade80', font: { weight: 'bold' } },
+                    grid: { color: '#1e293b' },
+                    ticks: { color: '#8892b0', callback: v => v + '%' }
                   },
                   y1: {
                     type: 'linear', display: hasColorTemp, position: 'right',
-                    title: { display: true, text: '色温 (K)', color: '#fb7185' },
-                    grid: { drawOnChartArea: false }, ticks: { color: '#8892b0' }
+                    title: { display: true, text: '色温 (K)', color: '#fbbf24', font: { weight: 'bold' } },
+                    grid: { drawOnChartArea: false },
+                    ticks: { color: '#fbbf24', callback: v => v + 'K' }
                   }
                 },
-                plugins: { legend: { labels: { color: '#f8fafc' } } }
+                plugins: {
+                  legend: {
+                    labels: { color: '#f8fafc', font: { size: 12, weight: '600' } }
+                  },
+                  tooltip: {
+                    backgroundColor: '#0f172a',
+                    titleColor: '#38bdf8',
+                    bodyColor: '#f8fafc',
+                    borderColor: '#233554',
+                    borderWidth: 1,
+                    padding: 10,
+                    callbacks: {
+                      label: function(context) {
+                        if (context.datasetIndex === 0) {
+                          return ` 🌿 亮度: ${context.parsed.y}%`;
+                        } else {
+                          const k = context.parsed.y;
+                          return ` ☀️ 色温: ${k}K (${getCCTDesc(k)})`;
+                        }
+                      }
+                    }
+                  }
+                }
               }
             });
           } else {
+            renderLightPills(safeId, hData);
             const chart = lightCharts[entityId];
             if (chart) {
               chart.data.labels = hData.labels;
               chart.data.datasets[0].data = hData.brightness;
               chart.data.datasets[1].data = hData.color_temp;
               const hasColorTemp = hData.color_temp.some(v => v !== null && v > 0);
-              chart.data.datasets[1].hidden = !hasColorTemp;
-              if (chart.options.scales.y1) {
+              chart.data.datasets[1]._hasColorTemp = hasColorTemp;
+              chart.data.datasets[0].pointRadius = hData.labels.length > 50 ? 0 : 2;
+              chart.data.datasets[1].pointRadius = hData.labels.length > 50 ? 0 : 2;
+
+              if (currFilter === 'b') {
+                chart.data.datasets[0].hidden = false;
+                chart.data.datasets[1].hidden = true;
+                chart.options.scales.y.display = true;
+                chart.options.scales.y1.display = false;
+              } else if (currFilter === 'c') {
+                chart.data.datasets[0].hidden = true;
+                chart.data.datasets[1].hidden = !hasColorTemp;
+                chart.options.scales.y.display = false;
+                chart.options.scales.y1.display = hasColorTemp;
+              } else {
+                chart.data.datasets[0].hidden = false;
+                chart.data.datasets[1].hidden = !hasColorTemp;
+                chart.options.scales.y.display = true;
                 chart.options.scales.y1.display = hasColorTemp;
               }
               chart.update();
@@ -1611,43 +2239,42 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           targetEl.innerText = `${firstG.prediction.brightness}% / ${firstG.prediction.color_temp}K`;
         }
         countEl.innerText = (currentLang === 'en' ? 'Total: ' : '全屋总计: ') + allLightsData.length + ' ' + (currentLang === 'en' ? 'lights' : '盏');
-        tableTitleEl.innerText = (currentLang === 'en' ? '[All Groups] 24-Hour Adaptive Curve' : '[全屋基线] 24小时自适应曲线');
       } else if (g) {
         targetEl.innerText = `${g.prediction.brightness}% / ${g.prediction.color_temp}K`;
         countEl.innerText = (currentLang === 'en' ? 'Recommended: ' : '建议开启灯具: ') + `${g.prediction.light_count} ` + (currentLang === 'en' ? 'lights' : '盏');
-        tableTitleEl.innerText = `[${g.name}] ` + (currentLang === 'en' ? '24-Hour Adaptive Curve' : '24小时自适应曲线');
       }
 
-      // 渲染受控灯光列表：首页只显示勾选的，未勾选放入二级菜单
+      // 渲染全量受控灯光列表 (开灯亮显，关灯暗显，点击直接勾选开关)
       const lights = isAll ? allLightsData : (g ? (g.lights || []) : []);
-      const activeLights = lights.filter(l => l.state === 'on');
-      const inactiveLights = lights.filter(l => l.state !== 'on');
+      const activeCount = lights.filter(l => l.state === 'on').length;
 
-      const activeContainer = document.getElementById('active-lights-container');
-      const inactiveContainer = document.getElementById('inactive-lights-container');
-      const inactiveBadge = document.getElementById('inactive-badge');
       const activeSummary = document.getElementById('active-summary');
-
       if (activeSummary) {
-        activeSummary.innerText = `${activeLights.length} / ${lights.length} ` + (currentLang === 'en' ? 'Active' : '已开启');
-      }
-      if (inactiveBadge) {
-        inactiveBadge.innerText = inactiveLights.length;
+        activeSummary.innerText = `${activeCount} / ${lights.length} ` + (currentLang === 'en' ? 'Active' : '已开启');
       }
 
-      // 1. 首页只显示勾选开启的
-      if (activeContainer) {
-        if (activeLights.length > 0) {
-          activeContainer.innerHTML = activeLights.map(l => {
+      const container = document.getElementById('lights-list-container') || document.getElementById('active-lights-container');
+      if (container) {
+        if (lights.length > 0) {
+          container.innerHTML = lights.map(l => {
+            const isStateOn = l.state === 'on';
             const curMode = l.mode || 'active';
+            const bg = isStateOn 
+              ? 'background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3);' 
+              : 'background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); opacity: 0.85;';
+            const textStyle = isStateOn ? 'font-weight: 600; color: #f8fafc;' : 'font-weight: 500; color: #94a3b8;';
+            const statePill = isStateOn
+              ? `<span style="font-size: 11px; font-weight: 600; color: #38bdf8; background: #0b172a; padding: 2px 6px; border-radius: 4px;">${l.brightness}% · ${l.color_temp}K</span>`
+              : `<span style="font-size: 11px; color: #64748b; background: #0b172a; padding: 2px 6px; border-radius: 4px;">${currentLang === 'en' ? 'Off' : '已关灯'}</span>`;
+
             return `
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 5px 8px; transition: 0.2s;">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; user-select: none; flex: 1; min-width: 0;">
-                <input type="checkbox" checked onchange="toggleLightState('${l.entity_id}', false)" style="width: 15px; height: 15px; accent-color: #38bdf8; cursor: pointer; flex-shrink: 0;">
-                <span style="font-size: 13px; font-weight: 600; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">💡 ${l.name}</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; ${bg} border-radius: 6px; padding: 6px 8px; transition: 0.2s;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; user-select: none; flex: 1; min-width: 0;" title="${isStateOn ? (currentLang==='en'?'Click to Turn Off':'点击关灯') : (currentLang==='en'?'Click to Turn On':'点击开灯')}">
+                <input type="checkbox" ${isStateOn ? 'checked' : ''} onchange="toggleLightState('${l.entity_id}', ${!isStateOn})" style="width: 15px; height: 15px; accent-color: #38bdf8; cursor: pointer; flex-shrink: 0;">
+                <span style="font-size: 13px; ${textStyle} overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">💡 ${l.name}</span>
               </label>
               <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                <span style="font-size: 11px; font-weight: 600; color: #38bdf8; background: #0b172a; padding: 2px 6px; border-radius: 4px;">${l.brightness}% · ${l.color_temp}K</span>
+                ${statePill}
                 <select class="mode-select" onchange="setLightMode('${l.entity_id}', this.value)">
                   <option value="active" ${curMode==='active'?'selected':''} title="${t.modeActiveTitle}">🌊 ${t.modeActive}</option>
                   <option value="turn_on" ${curMode==='turn_on'?'selected':''} title="${t.modeTurnOnTitle}">⚡ ${t.modeTurnOn}</option>
@@ -1657,38 +2284,88 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>`;
           }).join('');
         } else {
-          activeContainer.innerHTML = `<div style="font-size: 12px; color: var(--subtext); padding: 6px 0; text-align: center;">⚪ ${currentLang === 'en' ? 'No active lights (All off in secondary menu)' : '暂无开启灯具 (均在二级菜单中)'}</div>`;
+          container.innerHTML = `<div style="font-size: 12px; color: var(--subtext); padding: 8px 0; text-align: center;">${currentLang === 'en' ? 'No lights assigned to this group' : '当前分组暂无分配灯具'}</div>`;
         }
       }
 
-      // 2. 未勾选放入二级菜单
-      if (inactiveContainer) {
-        if (inactiveLights.length > 0) {
-          inactiveContainer.innerHTML = inactiveLights.map(l => {
-            const curMode = l.mode || 'active';
-            return `
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; user-select: none; flex: 1; min-width: 0;">
-                <input type="checkbox" onchange="toggleLightState('${l.entity_id}', true)" style="width: 15px; height: 15px; accent-color: #38bdf8; cursor: pointer; flex-shrink: 0;">
-                <span style="font-size: 12px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${l.name}</span>
-              </label>
-              <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                <span style="font-size: 11px; color: #64748b;">${currentLang === 'en' ? 'Off' : '关闭'}</span>
-                <select class="mode-select" onchange="setLightMode('${l.entity_id}', this.value)">
-                  <option value="active" ${curMode==='active'?'selected':''} title="${t.modeActiveTitle}">🌊 ${t.modeActive}</option>
-                  <option value="turn_on" ${curMode==='turn_on'?'selected':''} title="${t.modeTurnOnTitle}">⚡ ${t.modeTurnOn}</option>
-                  <option value="passive" ${curMode==='passive'?'selected':''} title="${t.modePassiveTitle}">🧠 ${t.modePassive}</option>
-                </select>
-              </div>
-            </div>`;
-          }).join('');
+      // 保持自适应曲线目标同步 (若当前处于分组基准模式)
+      if (selectedCurveTarget && selectedCurveTarget.startsWith('group:') && selectedGroupId !== '__all__') {
+        selectedCurveTarget = `group:${selectedGroupId}`;
+        const curveSelect = document.getElementById('curve-target-select');
+        if (curveSelect) curveSelect.value = selectedCurveTarget;
+      }
+      renderCurveTable();
+    }
+
+    function updateCurveTargetSelect() {
+      const select = document.getElementById('curve-target-select');
+      if (!select) return;
+
+      const prevVal = selectedCurveTarget || select.value;
+      select.innerHTML = '';
+
+      // 1. 灯光分组
+      const grpOptgroup = document.createElement('optgroup');
+      grpOptgroup.label = currentLang === 'en' ? '📂 Light Groups' : '📂 灯光分组';
+      for (const [gid, ginfo] of Object.entries(groupsData)) {
+        const opt = document.createElement('option');
+        opt.value = `group:${gid}`;
+        const lightsSuffix = currentLang === 'en' ? 'lights' : '盏灯';
+        opt.innerText = `📂 ${ginfo.name} (${ginfo.lights ? ginfo.lights.length : 0} ${lightsSuffix})`;
+        grpOptgroup.appendChild(opt);
+      }
+      select.appendChild(grpOptgroup);
+
+      // 2. 独立灯具
+      const lightOptgroup = document.createElement('optgroup');
+      lightOptgroup.label = currentLang === 'en' ? '💡 Individual Fixtures' : '💡 独立灯具';
+      for (const l of allLightsData) {
+        const opt = document.createElement('option');
+        opt.value = `light:${l.entity_id}`;
+        opt.innerText = `💡 ${l.name} (${l.group_name || l.group_id})`;
+        lightOptgroup.appendChild(opt);
+      }
+      select.appendChild(lightOptgroup);
+
+      let exists = false;
+      for (let i = 0; i < select.options.length; i++) {
+        if (select.options[i].value === prevVal) {
+          select.options[i].selected = true;
+          exists = true;
+          selectedCurveTarget = prevVal;
+          break;
+        }
+      }
+
+      if (!exists) {
+        if (selectedGroupId && selectedGroupId !== '__all__' && groupsData[selectedGroupId]) {
+          selectedCurveTarget = `group:${selectedGroupId}`;
+        } else if (Object.keys(groupsData).length > 0) {
+          selectedCurveTarget = `group:${Object.keys(groupsData)[0]}`;
+        } else if (allLightsData.length > 0) {
+          selectedCurveTarget = `light:${allLightsData[0].entity_id}`;
         } else {
-          inactiveContainer.innerHTML = `<div style="font-size: 11px; color: var(--subtext); padding: 4px 0; text-align: center;">${currentLang === 'en' ? 'All lights are active on Home' : '所有灯具均已开启在首页'}</div>`;
+          selectedCurveTarget = null;
+        }
+        if (selectedCurveTarget) {
+          select.value = selectedCurveTarget;
         }
       }
+    }
 
-      // 3. 渲染24小时曲线表
-      const profileSource = isAll ? (groupsData[Object.keys(groupsData)[0]] || {}).profile : (g ? g.profile : {});
+    function renderCurveTable() {
+      const select = document.getElementById('curve-target-select');
+      const badge = document.getElementById('curve-target-badge');
+      const theadTr = document.getElementById('curve-thead-tr');
+      const tbody = document.getElementById('curve-tbody');
+      if (!tbody) return;
+
+      const target = selectedCurveTarget || (select ? select.value : null);
+      if (!target) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--subtext); padding: 12px;">${currentLang === 'en' ? 'No target selected' : '请先选择曲线目标'}</td></tr>`;
+        return;
+      }
+
       let currentHour = new Date().getHours();
       if (serverCurrentTimeStr) {
         try {
@@ -1697,23 +2374,144 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         } catch (e) {}
       }
 
-      const tbody = document.getElementById('curve-tbody');
-      if (tbody) {
+      if (target.startsWith('group:')) {
+        const gid = target.slice(6);
+        const g = groupsData[gid];
+        const profile = g ? g.profile : {};
+
+        if (badge) {
+          badge.style.display = 'inline-block';
+          badge.style.background = 'rgba(56, 189, 248, 0.15)';
+          badge.style.color = '#38bdf8';
+          badge.style.border = '1px solid rgba(56, 189, 248, 0.3)';
+          badge.innerText = currentLang === 'en' ? '📂 Group Baseline' : '📂 分组学习基线';
+        }
+
+        if (theadTr) {
+          theadTr.innerHTML = `
+            <th id="th-time">${currentLang === 'en' ? 'Time' : '时间点'}</th>
+            <th id="th-col1">${currentLang === 'en' ? 'Learned Brightness' : '学习基准亮度'}</th>
+            <th id="th-col2">${currentLang === 'en' ? 'Learned CCT' : '学习基准色温'}</th>
+            <th id="th-col3">${currentLang === 'en' ? 'Suggested Active Lights' : '建议协同开灯数'}</th>
+            <th id="th-col4">${currentLang === 'en' ? 'Samples Count' : '调教样本数'}</th>
+          `;
+        }
+
         tbody.innerHTML = '';
         for (let h = 0; h < 24; h++) {
-          const item = (profileSource && profileSource[h.toString()]) || {};
+          const item = (profile && profile[h.toString()]) || {};
           const isCurrent = (h === currentHour);
           const tr = document.createElement('tr');
           if (isCurrent) tr.className = 'highlight-row';
-          const curLabel = isCurrent ? (currentLang === 'en' ? '👈 (Now)' : '👈 (当前)') : '';
+          const curLabel = isCurrent ? (currentLang === 'en' ? ' 👈 (Now)' : ' 👈 (当前)') : '';
           const unit = currentLang === 'en' ? 'lights' : '盏';
           const times = currentLang === 'en' ? 'samples' : '次';
+          const cctVal = item.color_temp || 4000;
+          const cctDesc = getCCTDesc(cctVal);
+          const cctColor = getCCTColor(cctVal);
+
           tr.innerHTML = `
-            <td>${h.toString().padStart(2, '0')}:00 ${curLabel}</td>
-            <td>${item.brightness || '--'}%</td>
-            <td>${item.color_temp || '--'}K</td>
+            <td>${h.toString().padStart(2, '0')}:00${curLabel}</td>
+            <td><strong style="color: #4ade80;">${item.brightness !== undefined ? item.brightness : '--'}%</strong></td>
+            <td><strong style="color: ${cctColor};">${cctVal}K</strong> <span style="font-size: 11px; color: ${cctColor}; opacity: 0.9;">(${cctDesc})</span></td>
             <td>${item.light_count || 1} ${unit}</td>
             <td>${item.samples_count || 0} ${times}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+      } else if (target.startsWith('light:')) {
+        const ent = target.slice(6);
+        const l = allLightsData.find(x => x.entity_id === ent);
+        const parentGrp = l ? groupsData[l.group_id] : null;
+        const profile = parentGrp ? parentGrp.profile : {};
+
+        if (badge) {
+          badge.style.display = 'inline-block';
+          badge.style.background = 'rgba(168, 85, 247, 0.15)';
+          badge.style.color = '#c084fc';
+          badge.style.border = '1px solid rgba(168, 85, 247, 0.3)';
+          badge.innerText = currentLang === 'en' ? '💡 Fixture Output Curve' : '💡 灯具物理适配曲线';
+        }
+
+        if (theadTr) {
+          theadTr.innerHTML = `
+            <th id="th-time">${currentLang === 'en' ? 'Time' : '时间点'}</th>
+            <th id="th-col1">${currentLang === 'en' ? 'Effective Brightness' : '实际调控亮度'}</th>
+            <th id="th-col2">${currentLang === 'en' ? 'Effective CCT' : '实际调控色温'}</th>
+            <th id="th-col3">${currentLang === 'en' ? 'Hardware Limits' : '硬件物理约束'}</th>
+            <th id="th-col4">${currentLang === 'en' ? 'Cruise Mode' : '运行模式'}</th>
+          `;
+        }
+
+        tbody.innerHTML = '';
+        if (!l) {
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--subtext); padding: 12px;">${currentLang === 'en' ? 'Light fixture not found' : '未找到对应灯具'}</td></tr>`;
+          return;
+        }
+
+        const minK = l.min_kelvin || 2700;
+        const maxK = l.max_kelvin || 6500;
+        const hasB = l.has_brightness !== false;
+        const hasCt = l.has_color_temp !== false;
+        const isLightOn = l.state === 'on';
+
+        let modeBadge = '';
+        if (!isLightOn) {
+          modeBadge = `<span style="font-size: 11px; background: rgba(148, 163, 184, 0.12); color: #94a3b8; padding: 2px 6px; border-radius: 4px; font-weight: 500;">💤 ${currentLang === 'en' ? 'Standby (Off)' : '待机 (已关灯)'}</span>`;
+        } else if (curMode === 'active') {
+          modeBadge = `<span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-weight: 600;">🌊 ${currentLang === 'en' ? 'Active Cruise' : '全主动巡航'}</span>`;
+        } else if (curMode === 'turn_on') {
+          modeBadge = `<span style="font-size: 11px; background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 2px 6px; border-radius: 4px; font-weight: 600;">⚡ ${currentLang === 'en' ? 'Turn-On Only' : '打断模式'}</span>`;
+        } else {
+          modeBadge = `<span style="font-size: 11px; background: rgba(168, 85, 247, 0.15); color: #c084fc; padding: 2px 6px; border-radius: 4px; font-weight: 600;">🧠 ${currentLang === 'en' ? 'Passive Learn' : '被动学习'}</span>`;
+        }
+
+        for (let h = 0; h < 24; h++) {
+          const item = (profile && profile[h.toString()]) || {};
+          const isCurrent = (h === currentHour);
+          const tr = document.createElement('tr');
+          if (isCurrent) tr.className = 'highlight-row';
+          const curLabel = isCurrent ? (currentLang === 'en' ? ' 👈 (Now)' : ' 👈 (当前)') : '';
+
+          // Brightness column
+          let bDisplay = '';
+          if (!hasB) {
+            bDisplay = `<span style="color: #94a3b8; font-size: 12px;">${currentLang === 'en' ? '100% (Switch Only)' : '100% (仅开关)'}</span>`;
+          } else {
+            const bVal = item.brightness !== undefined ? item.brightness : '--';
+            bDisplay = `<strong style="color: #4ade80;">${bVal}%</strong>`;
+          }
+
+          // CCT column & Hardware limits
+          let cctDisplay = '';
+          let limitDisplay = '';
+
+          if (!hasCt) {
+            cctDisplay = `<span style="color: #64748b; font-size: 12px;">-- (${currentLang === 'en' ? 'Fixed' : '固定色温'})</span>`;
+            limitDisplay = `<span style="color: #64748b; font-size: 11px;">${currentLang === 'en' ? 'No CCT Adjustment' : '无色温调节芯片'}</span>`;
+          } else {
+            const baseK = item.color_temp || 4000;
+            const clampedK = Math.max(minK, Math.min(maxK, baseK));
+            const cctColor = getCCTColor(clampedK);
+            const cctDesc = getCCTDesc(clampedK);
+
+            cctDisplay = `<strong style="color: ${cctColor};">${clampedK}K</strong> <span style="font-size: 11px; color: ${cctColor}; opacity: 0.9;">(${cctDesc})</span>`;
+
+            if (baseK < minK) {
+              limitDisplay = `<span style="color: #f59e0b; font-size: 11px; font-weight: 600;">⚠️ ${currentLang === 'en' ? `Clamped to Min ${minK}K` : `截断至物理下限 ${minK}K`}</span>`;
+            } else if (baseK > maxK) {
+              limitDisplay = `<span style="color: #f59e0b; font-size: 11px; font-weight: 600;">⚠️ ${currentLang === 'en' ? `Clamped to Max ${maxK}K` : `截断至物理上限 ${maxK}K`}</span>`;
+            } else {
+              limitDisplay = `<span style="color: #10b981; font-size: 11px;">✓ ${currentLang === 'en' ? `In Range (${minK}K~${maxK}K)` : `物理支持 (${minK}K~${maxK}K)`}</span>`;
+            }
+          }
+
+          tr.innerHTML = `
+            <td>${h.toString().padStart(2, '0')}:00${curLabel}</td>
+            <td>${bDisplay}</td>
+            <td>${cctDisplay}</td>
+            <td>${limitDisplay}</td>
+            <td>${modeBadge}</td>
           `;
           tbody.appendChild(tr);
         }
@@ -1742,16 +2540,79 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         const weatherLine = document.getElementById('weather-line');
         if (weatherLine) {
-          if (data.weather && data.weather.enabled && data.weather.temperature !== null) {
+          const w = data.weather;
+          if (w && w.enabled && w.temperature !== null) {
             const wLabel = currentLang === 'en' ? 'Live Weather: ' : '实时气象: ';
             const tempLabel = currentLang === 'en' ? 'Temp: ' : '气温: ';
             const feelsLabel = currentLang === 'en' ? 'Feels: ' : '体感: ';
             const cloudLabel = currentLang === 'en' ? 'Clouds: ' : '云量: ';
-            weatherLine.innerText = `⛅ ${wLabel}${data.weather.weather_desc} | ${tempLabel}${data.weather.temperature}°C (${feelsLabel}${data.weather.apparent_temperature}°C) | ${cloudLabel}${data.weather.cloud_cover}%`;
-          } else if (data.weather && !data.weather.enabled) {
+            const provMap = {
+              'auto': (currentLang === 'en' ? 'Auto' : '智能自动'),
+              'ha_weather': (currentLang === 'en' ? 'HA Local' : 'HA本地'),
+              'open_meteo': 'Open-Meteo',
+              'wttr_in': 'wttr.in',
+              'manual': (currentLang === 'en' ? 'Manual' : '手动指定')
+            };
+            const provName = provMap[w.provider] || w.provider || 'Auto';
+            weatherLine.innerText = `⛅ ${wLabel}${w.weather_desc} | ${tempLabel}${w.temperature}°C (${feelsLabel}${w.apparent_temperature}°C) | ${cloudLabel}${w.cloud_cover}% [${provName}]`;
+          } else if (w && !w.enabled) {
             weatherLine.innerText = currentLang === 'en' ? '⛅ Live Weather: Disabled' : '⛅ 实时气象: 未启用环境气象感知';
           } else {
-            weatherLine.innerText = currentLang === 'en' ? '⛅ Live Weather: Syncing...' : '⛅ 实时气象: 正在同步中...';
+            const syncErr = w && w.last_error ? ` (${w.last_error})` : '';
+            weatherLine.innerText = (currentLang === 'en' ? '⛅ Live Weather: Syncing...' : '⛅ 实时气象: 正在同步中...') + syncErr;
+          }
+        }
+
+        // 气象源下拉框同步
+        const wsSelect = document.getElementById('weather-source-select');
+        if (wsSelect && data.weather && data.weather.provider && document.activeElement !== wsSelect) {
+          wsSelect.value = data.weather.provider;
+          const manRow = document.getElementById('manual-weather-inputs-row');
+          if (manRow) manRow.style.display = data.weather.provider === 'manual' ? 'flex' : 'none';
+        }
+
+        // 季节因子覆盖与滑块同步
+        const chkSeason = document.getElementById('chk-season-override');
+        const rngSeason = document.getElementById('rng-season-factor');
+        const valSeason = document.getElementById('val-season-factor');
+        if (chkSeason && rngSeason && valSeason && document.activeElement !== rngSeason) {
+          const sOverride = data.solar.season_factor_override;
+          if (sOverride !== null && sOverride !== undefined) {
+            chkSeason.checked = true;
+            rngSeason.disabled = false;
+            rngSeason.value = sOverride;
+            const sValNum = Number(sOverride);
+            const kOffset = Math.round(sValNum * 300);
+            valSeason.innerText = `${sValNum >= 0 ? '+' : ''}${sValNum.toFixed(2)} (${kOffset >= 0 ? '+' : ''}${kOffset}K)`;
+            valSeason.style.color = '#38bdf8';
+          } else {
+            chkSeason.checked = false;
+            rngSeason.disabled = true;
+            const autoS = data.solar.season_factor_auto !== undefined ? data.solar.season_factor_auto : data.solar.season_factor;
+            rngSeason.value = autoS;
+            valSeason.innerText = (currentLang === 'en' ? 'Auto (' : '自动 (') + Number(data.solar.season_factor).toFixed(2) + ')';
+            valSeason.style.color = 'var(--subtext)';
+          }
+        }
+
+        // 天气因子倍率覆盖与滑块同步
+        const chkWeather = document.getElementById('chk-weather-override');
+        const rngWeather = document.getElementById('rng-weather-factor');
+        const valWeather = document.getElementById('val-weather-factor');
+        if (chkWeather && rngWeather && valWeather && document.activeElement !== rngWeather) {
+          const wOverride = data.weather ? data.weather.weather_factor_override : null;
+          if (wOverride !== null && wOverride !== undefined) {
+            chkWeather.checked = true;
+            rngWeather.disabled = false;
+            rngWeather.value = wOverride;
+            valWeather.innerText = Number(wOverride).toFixed(2) + 'x';
+            valWeather.style.color = '#4ade80';
+          } else {
+            chkWeather.checked = false;
+            rngWeather.disabled = true;
+            rngWeather.value = 1.00;
+            valWeather.innerText = (currentLang === 'en' ? 'Auto' : '自动');
+            valWeather.style.color = 'var(--subtext)';
           }
         }
 
@@ -1787,7 +2648,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           gSelect.appendChild(opt);
         }
 
+        updateCurveTargetSelect();
         renderCurrentGroup();
+        renderCurveTable();
 
         const logBox = document.getElementById('log-box');
         logBox.innerHTML = data.logs.join('<br>');
@@ -1841,6 +2704,9 @@ class WebPanel:
         self.app.router.add_post("/api/control/light_toggle", self.handle_control_light_toggle)
         self.app.router.add_post("/api/control/light_mode", self.handle_control_light_mode)
         self.app.router.add_post("/api/control/apply_suggestion", self.handle_control_apply_suggestion)
+        self.app.router.add_post("/api/control/weather_source", self.handle_control_weather_source)
+        self.app.router.add_post("/api/control/weather_refresh", self.handle_control_weather_refresh)
+        self.app.router.add_post("/api/control/factors_override", self.handle_control_factors_override)
         self.app.router.add_post("/api/setup/test_connection", self.handle_api_setup_test)
         self.app.router.add_get("/api/setup/discover_lights", self.handle_api_setup_discover)
         self.app.router.add_get("/api/setup/geocode", self.handle_api_setup_geocode)
@@ -1875,12 +2741,12 @@ class WebPanel:
 
             with open("/proc/self/stat", "r") as f:
                 stat_line = f.read().split()
-                # 累加进程的用户态与内核态时钟嘀嗒数
+                # Accumulate user and kernel ticks
                 utime = float(stat_line[13])
                 stime = float(stat_line[14])
                 total_cpu_time = (utime + stime) / 100.0  # USER_HZ = 100 on Linux
 
-                # 真实瞬时 CPU 使用率计算：ΔCPU时间 / Δ自然流逝时间 * 100%
+                # Instantaneous CPU %: delta CPU time / delta wall time * 100%
                 if self._last_cpu_time > 0:
                     cpu_delta = max(0.0, total_cpu_time - self._last_cpu_time)
                     cpu_percent = round((cpu_delta / time_delta) * 100.0, 1)
@@ -1904,23 +2770,26 @@ class WebPanel:
 
     async def handle_api_status(self, request):
         now = self.service.get_current_time()
-        h_float = now.hour + now.minute / 60.0 + now.second / 3600.0
-
         elev = self.service.solar.get_solar_elevation(now)
         term, term_prog = self.service.solar.get_solar_term(now)
-        season = self.service.solar.get_season_factor(now)
+        season_auto = self.service.solar.get_season_factor(now)
+        season = self.service.get_effective_season_factor(now)
 
         proc_stats = self.get_process_metrics()
 
         groups_dict = {}
         all_lights_list = []
         for gid, grp in self.service.groups.items():
-            pred = grp.model.predict(h_float, elev, season)
+            pred = self.service.predict_for_group(grp, now)
             grp_lights_data = []
             for item in grp.lights:
                 ent = item.get("entity_id")
                 st = self.service.light_states.get(ent, {})
                 name = item.get("name") or st.get("friendly_name") or ent
+                min_k = st.get("min_kelvin") or item.get("min_kelvin", 2700)
+                max_k = st.get("max_kelvin") or item.get("max_kelvin", 6500)
+                has_b = st.get("has_brightness", True)
+                has_ct = st.get("has_color_temp", True)
                 light_obj = {
                     "entity_id": ent,
                     "name": name,
@@ -1930,7 +2799,11 @@ class WebPanel:
                     "mode": item.get("mode", "active"),
                     "state": st.get("state", "off"),
                     "brightness": st.get("brightness", 0),
-                    "color_temp": st.get("color_temp", 4000)
+                    "color_temp": st.get("color_temp", 4000),
+                    "min_kelvin": min_k,
+                    "max_kelvin": max_k,
+                    "has_brightness": has_b,
+                    "has_color_temp": has_ct
                 }
                 grp_lights_data.append(light_obj)
                 all_lights_list.append(light_obj)
@@ -1945,6 +2818,9 @@ class WebPanel:
                 "profile": grp.model.anchors
             }
 
+        w_summary = self.service.weather.get_summary() if hasattr(self.service, "weather") else {}
+        w_summary["weather_factor_override"] = getattr(self.service, "weather_factor_override", None)
+
         data = {
             "time": {
                 "current_time": now.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1955,9 +2831,11 @@ class WebPanel:
                 "term": term,
                 "term_progress": round(term_prog, 2),
                 "elevation": round(elev, 2),
-                "season_factor": round(season, 2)
+                "season_factor": round(season, 2),
+                "season_factor_auto": round(season_auto, 2),
+                "season_factor_override": getattr(self.service, "season_factor_override", None)
             },
-            "weather": self.service.weather.get_summary() if hasattr(self.service, "weather") else {},
+            "weather": w_summary,
             "process": proc_stats,
             "groups": groups_dict,
             "all_lights": all_lights_list,
@@ -1995,6 +2873,35 @@ class WebPanel:
         except Exception as e:
             return web.json_response({"ok": False, "message": str(e)})
 
+    async def handle_control_weather_source(self, request):
+        try:
+            req_data = await request.json()
+            provider = req_data.get("provider", "auto")
+            manual_params = req_data.get("manual_params") or req_data.get("manual")
+            await self.service.set_weather_source(provider, manual_params)
+            return web.json_response({"ok": True, "provider": provider})
+        except Exception as e:
+            return web.json_response({"ok": False, "message": str(e)})
+
+    async def handle_control_weather_refresh(self, request):
+        try:
+            await self.service.weather.fetch_weather(force=True)
+            return web.json_response({"ok": True, "weather": self.service.weather.get_summary()})
+        except Exception as e:
+            return web.json_response({"ok": False, "message": str(e)})
+
+    async def handle_control_factors_override(self, request):
+        try:
+            req_data = await request.json()
+            s_val = req_data.get("season_factor")
+            w_val = req_data.get("weather_factor")
+            s_float = float(s_val) if s_val is not None else None
+            w_float = float(w_val) if w_val is not None else None
+            self.service.set_factors_override(s_float, w_float)
+            return web.json_response({"ok": True, "season_factor": s_float, "weather_factor": w_float})
+        except Exception as e:
+            return web.json_response({"ok": False, "message": str(e)})
+
     async def handle_control_language(self, request):
         req_data = await request.json()
         lang = req_data.get("language", "zh")
@@ -2026,6 +2933,22 @@ class WebPanel:
     async def handle_api_history_lights(self, request):
         hours = float(request.query.get("hours", 24))
         data = self.service.db.query_light_history(hours=hours, tz=self.service.tz)
+        for ent, ent_data in data.items():
+            st = self.service.light_states.get(ent, {})
+            ent_data["friendly_name"] = st.get("friendly_name") or ent
+            ent_data["state"] = st.get("state", "off")
+            ent_data["current_brightness"] = st.get("brightness", 0)
+            ent_data["current_color_temp"] = st.get("color_temp")
+            ent_data["has_brightness"] = st.get("has_brightness", True)
+            ent_data["has_color_temp"] = st.get("has_color_temp", True)
+            grp = self.service.entity_to_group.get(ent)
+            if grp:
+                ent_data["group_name"] = grp.name
+                item_cfg = next((it for it in grp.lights if it.get("entity_id") == ent), {})
+                ent_data["mode"] = item_cfg.get("mode", "active")
+            else:
+                ent_data["group_name"] = "Lights"
+                ent_data["mode"] = "active"
         return web.json_response(data)
 
     async def handle_api_setup_test(self, request):
@@ -2048,7 +2971,7 @@ class WebPanel:
     async def handle_api_setup_geocode(self, request):
         query = request.query.get("query", "").strip()
         if not query:
-            return web.json_response({"ok": False, "results": [], "message": "请输入要检索的地名或城市"})
+            return web.json_response({"ok": False, "results": [], "message": "Please enter a location or city name"})
 
         url = f"https://geocoding-api.open-meteo.com/v1/search?name={query}&count=6&language=zh,en&format=json"
         try:
@@ -2129,4 +3052,4 @@ class WebPanel:
         await runner.setup()
         site = web.TCPSite(runner, self.host, self.port)
         await site.start()
-        add_log(f"Web 控制面板已就绪: http://{self.host}:{self.port}")
+        add_log(f"Web Dashboard ready at: http://{self.host}:{self.port}")

@@ -1,10 +1,10 @@
 """
-GoodLight 核心自适应学习模型
-支持：
-1. 24小时自然基准三次样条曲线
-2. 太阳高度角、节气与季节自适应修正
-3. 开灯数量（灯具组合）智能推荐与学习
-4. 用户手动干预局部高斯衰减增量学习 (Online Local Learning)
+GoodLight Core Adaptive Circadian Learning Model.
+Features:
+1. 24-hour natural circadian baseline with Smooth Hermite cubic interpolation
+2. Solar elevation angle, solar terms, and seasonal factor adaptations
+3. Intelligent fixture count synergy and prioritization recommendation
+4. Online Local Learning with Gaussian kernel decay for manual user adjustments
 """
 
 import math
@@ -15,20 +15,20 @@ from typing import Dict, List, Any, Tuple
 class GoodLightModel:
     def __init__(self, profile_path: str = "light_profile.json"):
         self.profile_path = profile_path
-        self.anchors = {}  # 0~23小时基准数据: {hour: {"brightness": %, "color_temp": K, "light_count": n}}
+        self.anchors = {}  # 0~23 hour anchors: {hour: {"brightness": %, "color_temp": K, "light_count": n}}
         self.load_or_init_profile()
 
     def load_or_init_profile(self):
-        """加载已驯化的用户偏好模型，若无则初始化自然节律默认值"""
+        """Load trained user preference profile or initialize with circadian default baseline."""
         if os.path.exists(self.profile_path):
             try:
                 with open(self.profile_path, "r", encoding="utf-8") as f:
                     self.anchors = json.load(f)
                     return
             except Exception as e:
-                print(f"[Model] 加载历史偏好失败，重新初始化: {e}")
+                print(f"[Model] Failed to load saved profile, reinitializing: {e}")
 
-        # 默认 24 小时自然节律基准 (以人为本：深夜极暗暖光、晨起柔和、正午明亮清爽、晚间温馨)
+        # Default 24-hour circadian rhythm baseline (human-centric: soft warm amber at night, bright neutral at noon)
         default_curve = {
             "0":  {"brightness": 12, "color_temp": 2700, "light_count": 1},
             "2":  {"brightness": 8,  "color_temp": 2500, "light_count": 1},
@@ -44,7 +44,7 @@ class GoodLightModel:
             "22": {"brightness": 20, "color_temp": 2800, "light_count": 1},
         }
 
-        # 补全插值至整点 0~23
+        # Interpolate anchors to all 24 hours (0~23)
         self.anchors = {}
         for h in range(24):
             lower_h = (h // 2) * 2
@@ -61,28 +61,28 @@ class GoodLightModel:
                 "brightness": round(b, 1),
                 "color_temp": round(c),
                 "light_count": cnt,
-                "samples_count": 0  # 该时间段的用户干预样本数
+                "samples_count": 0  # Number of user manual intervention samples for this hour
             }
         self.save_profile()
 
     def save_profile(self):
-        """保存模型状态到磁盘"""
+        """Persist model anchor state to disk."""
         try:
             with open(self.profile_path, "w", encoding="utf-8") as f:
                 json.dump(self.anchors, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"[Model] 保存偏好失败: {e}")
+            print(f"[Model] Failed to save profile to disk: {e}")
 
     def save(self):
-        """保存模型状态到磁盘 (save_profile 别名)"""
+        """Alias for save_profile."""
         self.save_profile()
 
-    def predict(self, hour_float: float, solar_elevation: float, season_factor: float, temp_celsius: float = None, cloud_cover: int = None) -> Dict[str, Any]:
+    def predict(self, hour_float: float, solar_elevation: float, season_factor: float, temp_celsius: float = None, cloud_cover: int = None, env_b_factor_override: float = None) -> Dict[str, Any]:
         """
-        根据当前状态预测：
-        - 目标亮度 (%)
-        - 目标色温 (K)
-        - 建议开启的灯光数量 (1~N)
+        Predict target circadian metrics for current conditions:
+        - Target brightness (%)
+        - Target color temperature (K)
+        - Recommended light fixture count (1~N)
         """
         h_int = int(hour_float) % 24
         next_h = (h_int + 1) % 24
@@ -91,42 +91,48 @@ class GoodLightModel:
         p1 = self.anchors[str(h_int)]
         p2 = self.anchors[str(next_h)]
 
-        # 1. 基础时间三次平滑插值 (Smooth Hermite Interpolation)
+        # 1. Base time smooth cubic interpolation (Smooth Hermite Interpolation)
         smooth_t = ratio * ratio * (3 - 2 * ratio)
         base_brightness = p1["brightness"] + (p2["brightness"] - p1["brightness"]) * smooth_t
         base_color_temp = p1["color_temp"] + (p2["color_temp"] - p1["color_temp"]) * smooth_t
         base_count = round(p1["light_count"] + (p2["light_count"] - p1["light_count"]) * smooth_t)
 
-        # 2. 太阳真实高度角自然校准 (Solar Elevation Compensation)
-        if solar_elevation < -18:  # 天文黑夜
+        # 2. Solar elevation angle calibration (Solar Elevation Compensation)
+        if solar_elevation < -18:  # Astronomical night
             solar_b_factor = 0.85
             solar_c_offset = -200
-        elif solar_elevation > 30:  # 正午烈日
+        elif solar_elevation > 30:  # Direct bright midday sun
             solar_b_factor = 1.05
             solar_c_offset = 200
         else:
             solar_b_factor = 1.0
             solar_c_offset = 0
 
-        # 3. 节气与季节冷暖补偿 (夏至凉白 +300K, 冬至暖黄 -300K)
+        # 3. 24 Solar terms and seasonal thermal compensation (+300K in summer, -300K in winter)
         season_c_offset = season_factor * 300.0
 
-        # 4. 环境气温冷暖自适应微调 (温度偏低加暖，温度偏高加凉)
+        # 4. Ambient outdoor temperature thermal compensation (warmer when cold, cooler when hot)
         temp_c_offset = 0
         if temp_celsius is not None:
             if temp_celsius < 10:
-                temp_c_offset = -250  # 寒冷加暖
+                temp_c_offset = -250  # Warmer in cold weather
             elif temp_celsius > 28:
-                temp_c_offset = +200  # 炎热加凉
+                temp_c_offset = +200  # Cooler in hot weather
 
-        # 5. 云量采光与阴雨天光照补偿 (Cloud Cover Brightness Boost)
-        # 白天如果云层浓密 (>50%)，户外天然采光不足，室内平滑提高亮度补偿
+        # 5. Cloud cover daylight compensation (Cloud Cover Brightness Boost)
+        # In daytime with heavy overcast (>50%), gently increase indoor brightness (up to +10%)
         cloud_b_factor = 1.0
         if cloud_cover is not None and solar_elevation > 0:
             if cloud_cover > 50:
-                cloud_b_factor = 1.0 + 0.20 * ((cloud_cover - 50) / 50.0)
+                cloud_b_factor = 1.0 + 0.10 * ((cloud_cover - 50) / 50.0)
 
-        final_brightness = max(1.0, min(100.0, base_brightness * solar_b_factor * cloud_b_factor))
+        # Cap combined environmental boost or use manual override
+        if env_b_factor_override is not None:
+            env_b_factor = max(0.70, min(1.30, float(env_b_factor_override)))
+        else:
+            env_b_factor = min(1.10, solar_b_factor * cloud_b_factor)
+
+        final_brightness = max(1.0, min(88.0, base_brightness * env_b_factor))
         final_color_temp = max(2500, min(6500, round(base_color_temp + solar_c_offset + season_c_offset + temp_c_offset)))
         final_count = max(1, base_count)
 
@@ -137,26 +143,26 @@ class GoodLightModel:
         }
 
     def learn(self, hour_float: float, actual_brightness: float = None, actual_color_temp: int = None, actual_count: int = None, learning_rate: float = 0.25):
-        """通用自适应学习接口 (learn_user_adjustment 别名)"""
+        """Universal adaptive learning interface (alias for learn_user_adjustment)."""
         return self.learn_user_adjustment(hour_float, actual_brightness, actual_color_temp, actual_count, learning_rate)
 
     def learn_user_adjustment(self, hour_float: float, actual_brightness: float = None, actual_color_temp: int = None, actual_count: int = None, learning_rate: float = 0.25):
         """
-        在线局部高斯核学习：
-        当用户手动拉动了滑块或开关了灯，仅对当前时间点周围 2 小时内的锚点进行加权学习
+        Online Local Learning with Gaussian kernel decay:
+        When a user manually dims or switches lights, apply weighted learning to anchor points within a 2-hour window.
         """
         current_h = hour_float % 24
-        print(f"[Model] 收到人工调教信号 (Time: {current_h:.2f}h) -> 亮度: {actual_brightness}, 色温: {actual_color_temp}, 灯数: {actual_count}")
+        print(f"[Model] Received user adjustment signal (Time: {current_h:.2f}h) -> Brightness: {actual_brightness}%, CCT: {actual_color_temp}K, Count: {actual_count}")
 
         for h in range(24):
-            # 环形时间差
+            # Circular 24-hour time difference
             diff = abs(h - current_h)
             diff = min(diff, 24 - diff)
 
             if diff > 2.5:
-                continue  # 仅影响前后 2 小时窗口
+                continue  # Only affect neighboring 2-hour window
 
-            # 高斯局部核衰减权重
+            # Gaussian local kernel decay weight
             weight = math.exp(-0.5 * (diff / 1.0) ** 2) * learning_rate
             h_key = str(h)
             node = self.anchors[h_key]
@@ -168,10 +174,9 @@ class GoodLightModel:
                 node["color_temp"] = round(node["color_temp"] * (1 - weight) + actual_color_temp * weight)
 
             if actual_count is not None:
-                # 离散计数向多数偏好收敛
                 node["light_count"] = actual_count
 
             node["samples_count"] = node.get("samples_count", 0) + 1
 
         self.save_profile()
-        print(f"[Model] 偏好学习完成并已持久化到 {self.profile_path}")
+        print(f"[Model] Profile updated with learned preferences and saved to {self.profile_path}")

@@ -27,11 +27,13 @@ groups:
         priority: 1
         min_kelvin: 3000
         max_kelvin: 5700
+        mode: "active"      # 'active' (全主动巡航) | 'turn_on' (仅开灯打断) | 'passive' (被动学习)
       - entity_id: "light.leishi_cn_860863113_eps127_s_4_ambient_light"
         name: "雷士吸顶灯氛围灯"
         priority: 2
         min_kelvin: 2700
         max_kelvin: 6500
+        mode: "turn_on"
 
   - id: "desk_room"
     name: "书房/工作台灯组"
@@ -43,6 +45,7 @@ groups:
         priority: 1
         min_kelvin: 2700
         max_kelvin: 6500
+        mode: "turn_on"
 
 sensors:
   temperature: ""  # 如: sensor.indoor_temperature

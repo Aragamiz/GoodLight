@@ -1,10 +1,10 @@
 """
-GoodLight 异步 WebSocket 客户端与事件引擎
-实现：
-1. 监听 HA 实体状态变化 (state_changed)
-2. 识别“开灯”瞬间并下发天体预测值 (零延迟介入)
-3. 识别“人为手动调光/开关灯”行为并过滤自动化干扰
-4. 下发平滑灯光控制命令
+GoodLight Asynchronous WebSocket Client and Event Engine for Home Assistant.
+Features:
+1. Listen to Home Assistant state change events (state_changed) in real-time
+2. Zero-latency turn-on interception with instant circadian target application
+3. Discerning user manual adjustments vs automated cruise changes
+4. Smooth fixture command dispatching with transition curves
 """
 
 import asyncio
@@ -27,24 +27,25 @@ class HAClient:
         self._callbacks = []
 
     async def connect(self):
+        """Establish persistent WebSocket connection with Home Assistant and handle event loop."""
         self.session = aiohttp.ClientSession()
         while True:
             try:
-                logger.info(f"正在连接 Home Assistant WebSocket: {self.ws_url} ...")
+                logger.info(f"Connecting to Home Assistant WebSocket: {self.ws_url} ...")
                 self.ws = await self.session.ws_connect(self.ws_url)
-                # 1. 认证阶段
+                # 1. Authentication phase
                 auth_req = await self.ws.receive_json()
                 if auth_req.get("type") == "auth_required":
                     await self.ws.send_json({"type": "auth", "access_token": self.token})
                     auth_resp = await self.ws.receive_json()
                     if auth_resp.get("type") == "auth_ok":
-                        logger.info("Home Assistant WebSocket 认证成功！")
+                        logger.info("Home Assistant WebSocket authenticated successfully!")
                     else:
-                        logger.error(f"WebSocket 认证失败: {auth_resp}")
+                        logger.error(f"WebSocket authentication failed: {auth_resp}")
                         await asyncio.sleep(10)
                         continue
 
-                # 2. 订阅 state_changed 事件
+                # 2. Subscribe to state_changed events
                 sub_id = self._msg_id
                 self._msg_id += 1
                 await self.ws.send_json({
@@ -52,9 +53,9 @@ class HAClient:
                     "type": "subscribe_events",
                     "event_type": "state_changed"
                 })
-                logger.info("已成功订阅实体状态变化事件 (state_changed)")
+                logger.info("Successfully subscribed to state_changed events")
 
-                # 3. 消息循环
+                # 3. Message dispatching loop
                 async for msg in self.ws:
                     if msg.type == aiohttp.WSMsgType.TEXT:
                         data = json.loads(msg.data)
@@ -64,22 +65,24 @@ class HAClient:
                                 try:
                                     await cb(event_data)
                                 except Exception as e:
-                                    logger.error(f"事件回调处理异常: {e}")
+                                    logger.error(f"Error in event callback: {e}")
                     elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                         break
             except Exception as e:
-                logger.warning(f"WebSocket 连接中断: {e}，5秒后自动重连...")
+                logger.warning(f"WebSocket connection lost: {e}, reconnecting in 5s...")
                 await asyncio.sleep(5)
 
     def register_event_listener(self, callback: Callable):
+        """Register a callback coroutine for state_changed events."""
         self._callbacks.append(callback)
 
     async def ensure_session(self):
+        """Ensure active aiohttp client session."""
         if self.session is None or self.session.closed:
             self.session = aiohttp.ClientSession()
 
     async def call_service(self, domain: str, service: str, service_data: Dict[str, Any]):
-        """调用 HA 服务 (REST 或 WS)"""
+        """Call a Home Assistant service via REST API."""
         await self.ensure_session()
         url = f"{self.base_url}/api/services/{domain}/{service}"
         headers = {
@@ -90,14 +93,14 @@ class HAClient:
             async with self.session.post(url, headers=headers, json=service_data, timeout=5) as resp:
                 if resp.status != 200:
                     text = await resp.text()
-                    logger.error(f"调用服务 {domain}.{service} 失败 [{resp.status}]: {text}")
+                    logger.error(f"Failed to call service {domain}.{service} [{resp.status}]: {text}")
                 else:
-                    logger.debug(f"成功下发指令 {domain}.{service} -> {service_data}")
+                    logger.debug(f"Service call successful: {domain}.{service} -> {service_data}")
         except Exception as e:
-            logger.error(f"调用服务网络异常: {e}")
+            logger.error(f"Network error calling service: {e}")
 
     async def get_state(self, entity_id: str) -> Dict[str, Any]:
-        """获取单个实体的实时状态"""
+        """Fetch current state of a single entity."""
         await self.ensure_session()
         url = f"{self.base_url}/api/states/{entity_id}"
         headers = {"Authorization": f"Bearer {self.token}"}
@@ -106,17 +109,17 @@ class HAClient:
                 if resp.status == 200:
                     return await resp.json()
         except Exception as e:
-            logger.debug(f"获取状态异常 {entity_id}: {e}")
+            logger.debug(f"Error fetching state for {entity_id}: {e}")
         return {}
 
     def update_credentials(self, base_url: str, token: str):
-        """更新连接地址与令牌"""
+        """Update HA URL and access token dynamically."""
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.ws_url = self.base_url.replace("http://", "ws://").replace("https://", "wss://") + "/api/websocket"
 
     async def get_all_entities(self, test_url: str = None, test_token: str = None) -> List[Dict[str, Any]]:
-        """获取所有实体列表"""
+        """Fetch all entity states from Home Assistant."""
         await self.ensure_session()
         base = (test_url or self.base_url).rstrip("/")
         tok = test_token or self.token
@@ -128,13 +131,13 @@ class HAClient:
                     return await resp.json()
                 else:
                     text = await resp.text()
-                    logger.warning(f"获取实体列表失败 [{resp.status}]: {text}")
+                    logger.warning(f"Failed to fetch entities [{resp.status}]: {text}")
         except Exception as e:
-            logger.error(f"获取实体列表网络异常: {e}")
+            logger.error(f"Network error fetching entities: {e}")
         return []
 
     async def discover_lights(self, test_url: str = None, test_token: str = None) -> List[Dict[str, Any]]:
-        """自主识别全屋所有灯具实体，并解析友善名称与支持特性"""
+        """Discover all light entities and parse friendly names and hardware capabilities."""
         states = await self.get_all_entities(test_url=test_url, test_token=test_token)
         lights = []
         for st in states:
@@ -144,13 +147,13 @@ class HAClient:
                 friendly_name = attrs.get("friendly_name") or ent
                 supported_color_modes = attrs.get("supported_color_modes", [])
                 
-                # 判断是否支持无级调光
+                # Check dimming brightness support
                 has_brightness = (
                     ("brightness" in attrs) or 
                     any(m in supported_color_modes for m in ["brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww"])
                 )
                 
-                # 判断是否支持色温切换
+                # Check tunable color temperature support
                 has_color_temp = (
                     ("color_temp" in attrs) or 
                     ("color_temp_kelvin" in attrs) or 
@@ -176,7 +179,7 @@ class HAClient:
         return lights
 
     async def test_connection(self, url: str, token: str) -> Dict[str, Any]:
-        """向导中用于验证 HA 地址与令牌有效性，并直接扫描灯具"""
+        """Validate HA connection credentials and discover lights for setup wizard."""
         await self.ensure_session()
         base = url.rstrip("/")
         headers = {"Authorization": f"Bearer {token}"}
@@ -184,7 +187,6 @@ class HAClient:
             async with self.session.get(f"{base}/api/", headers=headers, timeout=6) as resp:
                 if resp.status == 200:
                     api_info = await resp.json()
-                    # 进一步扫描灯具
                     lights = await self.discover_lights(test_url=base, test_token=token)
                     return {
                         "ok": True,
@@ -193,18 +195,18 @@ class HAClient:
                         "lights_count": len(lights)
                     }
                 elif resp.status == 401:
-                    return {"ok": False, "message": "401 Unauthorized: 令牌无效或已过期，请检查 Long-Lived Access Token"}
+                    return {"ok": False, "message": "401 Unauthorized: Invalid or expired Long-Lived Access Token"}
                 else:
-                    return {"ok": False, "message": f"连接返回状态码 {resp.status}"}
+                    return {"ok": False, "message": f"Connection returned HTTP status {resp.status}"}
         except Exception as e:
-            return {"ok": False, "message": f"无法连接到 Home Assistant: {str(e)}"}
+            return {"ok": False, "message": f"Cannot connect to Home Assistant: {str(e)}"}
 
     async def get_entity_history(self, entity_id: str, days: int = 14) -> List[Dict[str, Any]]:
-        """获取指定灯具在 Home Assistant 中的历史状态记录 (支持自动回溯天数降级)"""
+        """Fetch historical state changes for an entity from Home Assistant REST API (with automatic fallback days)."""
         await self.ensure_session()
         headers = {"Authorization": f"Bearer {self.token}"}
 
-        # 尝试请求天数；如果HA录制器保留天数较短导致返回空，依次降级尝试
+        # Try requested days; fallback gracefully if recorder retention is shorter
         day_candidates = [days]
         for fallback in [7, 3, 1]:
             if fallback < days:
@@ -220,6 +222,5 @@ class HAClient:
                         if data and isinstance(data, list) and len(data) > 0:
                             return data[0]
             except Exception as e:
-                logger.debug(f"获取 {entity_id} {d}天历史异常: {e}")
+                logger.debug(f"Error fetching history for {entity_id} ({d} days): {e}")
         return []
-

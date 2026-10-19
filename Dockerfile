@@ -2,10 +2,13 @@ FROM python:3.11-alpine
 
 WORKDIR /app
 
-# 安装极简依赖 (aiohttp, pyyaml)
+# Install minimal dependencies (aiohttp, pyyaml)
 RUN pip install --no-cache-dir aiohttp pyyaml
 
-COPY solar.py model.py ha_client.py main.py ./
-COPY config.yaml ./
+COPY *.py ./
+COPY config.example.yaml ./config.example.yaml
+COPY config.example.en.yaml ./config.example.en.yaml
+
+EXPOSE 8787
 
 CMD ["python", "main.py"]
