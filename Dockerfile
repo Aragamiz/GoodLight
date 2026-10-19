@@ -2,8 +2,9 @@ FROM python:3.11-alpine
 
 WORKDIR /app
 
-# Install minimal dependencies (aiohttp, pyyaml)
-RUN pip install --no-cache-dir aiohttp pyyaml
+# Install minimal dependencies
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY *.py ./
 COPY config.example.yaml ./config.example.yaml
